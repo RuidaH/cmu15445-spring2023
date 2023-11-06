@@ -179,7 +179,7 @@ class BufferPoolManager {
   std::atomic<page_id_t> next_page_id_ = 0;
 
   /** Array of buffer pool pages. */
-  Page *pages_;
+  Page *pages_;  // 这里的 page 本质上就是 frame, 用来容纳实际的 physical page
   /** Pointer to the disk manager. */
   DiskManager *disk_manager_ __attribute__((__unused__));
   /** Pointer to the log manager. Please ignore this for P1. */
@@ -206,6 +206,15 @@ class BufferPoolManager {
   void DeallocatePage(__attribute__((unused)) page_id_t page_id) {
     // This is a no-nop right now without a more complex data structure to track deallocated pages
   }
+
+  /**
+   * @brief find a free frame from free_list_ or replacer_
+   *
+   * @param free_frame_id
+   * @return true
+   * @return false
+   */
+  auto FindFreeFrame(frame_id_t *free_frame_id) -> bool;
 
   // TODO(student): You may add additional private members and helper functions
 };

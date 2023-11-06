@@ -3,28 +3,121 @@
 
 namespace bustub {
 
-BasicPageGuard::BasicPageGuard(BasicPageGuard &&that) noexcept {}
+// move constructor
+BasicPageGuard::BasicPageGuard(BasicPageGuard &&that) noexcept {
+  // no need to use std::move() since they are just pointers
+  bpm_ = that.bpm_;
+  page_ = that.page_;
+  is_dirty_ = that.is_dirty_;
 
-void BasicPageGuard::Drop() {}
+  // disable the old page guard
+  that.bpm_ = nullptr;
+  that.page_ = nullptr;
+  that.is_dirty_ = false;
+}
 
-auto BasicPageGuard::operator=(BasicPageGuard &&that) noexcept -> BasicPageGuard & { return *this; }
+void BasicPageGuard::Drop() {
+  if (page_ == nullptr) {
+    return;
+  }
 
-BasicPageGuard::~BasicPageGuard(){};  // NOLINT
+  if (page_->GetPageId() != INVALID_PAGE_ID) {
+    bpm_->UnpinPage(page_->GetPageId(), is_dirty_);
+  }
 
-ReadPageGuard::ReadPageGuard(ReadPageGuard &&that) noexcept = default;
+  bpm_ = nullptr;
+  page_ = nullptr;
+  is_dirty_ = false;
+}
 
-auto ReadPageGuard::operator=(ReadPageGuard &&that) noexcept -> ReadPageGuard & { return *this; }
+auto BasicPageGuard::operator=(BasicPageGuard &&that) noexcept -> BasicPageGuard & {
+  if (this == &that) {
+    return *this;
+  }
 
-void ReadPageGuard::Drop() {}
+  // drop the current guarded page
+  Drop();
 
-ReadPageGuard::~ReadPageGuard() {}  // NOLINT
+  bpm_ = that.bpm_;
+  page_ = that.page_;
+  is_dirty_ = that.is_dirty_;
 
-WritePageGuard::WritePageGuard(WritePageGuard &&that) noexcept = default;
+  // disable the old page guard
+  that.bpm_ = nullptr;
+  that.page_ = nullptr;
+  that.is_dirty_ = false;
 
-auto WritePageGuard::operator=(WritePageGuard &&that) noexcept -> WritePageGuard & { return *this; }
+  return *this;
+}
 
-void WritePageGuard::Drop() {}
+BasicPageGuard::~BasicPageGuard() { Drop(); };  // NOLINT
 
-WritePageGuard::~WritePageGuard() {}  // NOLINT
+// ---------------------------
+
+// Move constructor
+ReadPageGuard::ReadPageGuard(ReadPageGuard &&that) noexcept {
+  // call move operator overloading
+  guard_ = std::move(that.guard_);
+};
+
+auto ReadPageGuard::operator=(ReadPageGuard &&that) noexcept -> ReadPageGuard & {
+  if (this == &that) {
+    return *this;
+  }
+
+  // if (that.guard_.page_ != nullptr) {
+  //   that.guard_.page_->RUnlatch();
+  // }
+
+  guard_ = std::move(that.guard_);
+  return *this;
+}
+
+void ReadPageGuard::Drop() {
+  if (guard_.page_ == nullptr) {
+    return;
+  }
+  if (guard_.page_->GetPageId() != INVALID_PAGE_ID) {
+    guard_.bpm_->UnpinPage(guard_.page_->GetPageId(), guard_.page_->IsDirty());
+  }
+
+  // 应该先把 frame 中 page 的资源给释放出去, 最后在释放 frame 的锁
+  guard_.page_->RUnlatch();
+  guard_.bpm_ = nullptr;
+  guard_.page_ = nullptr;
+  guard_.is_dirty_ = false;
+}
+
+ReadPageGuard::~ReadPageGuard() { Drop(); }  // NOLINT
+
+// ---------------------------
+
+WritePageGuard::WritePageGuard(WritePageGuard &&that) noexcept { guard_ = std::move(that.guard_); };
+
+auto WritePageGuard::operator=(WritePageGuard &&that) noexcept -> WritePageGuard & {
+  if (this == &that) {
+    return *this;
+  }
+  guard_ = std::move(that.guard_);
+  return *this;
+}
+
+void WritePageGuard::Drop() {
+  if (guard_.page_ == nullptr) {
+    return;
+  }
+
+  if (guard_.page_->GetPageId() != INVALID_PAGE_ID) {
+    guard_.bpm_->UnpinPage(guard_.page_->GetPageId(), guard_.page_->IsDirty());
+  }
+
+  // release the write latch
+  guard_.page_->WUnlatch();
+  guard_.page_ = nullptr;
+  guard_.bpm_ = nullptr;
+  guard_.is_dirty_ = false;
+}
+
+WritePageGuard::~WritePageGuard() { Drop(); }  // NOLINT
 
 }  // namespace bustub

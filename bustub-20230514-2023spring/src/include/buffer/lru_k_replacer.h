@@ -12,13 +12,16 @@
 
 #pragma once
 
+#include <iostream>
 #include <limits>
 #include <list>
 #include <mutex>  // NOLINT
+#include <string>
 #include <unordered_map>
 #include <vector>
 
 #include "common/config.h"
+#include "common/logger.h"
 #include "common/macros.h"
 
 namespace bustub {
@@ -26,14 +29,50 @@ namespace bustub {
 enum class AccessType { Unknown = 0, Get, Scan };
 
 class LRUKNode {
+ public:
+  LRUKNode(frame_id_t id, int k) : k_(k), fid_(id) {}
+
+  void InsertTimeStamp(size_t ts) { history_.push_back(ts); }
+
+  void SetEvictable(bool set_evictable) { is_evictable_ = set_evictable; }
+
+  void UpdateKDistance() {
+    auto iter = history_.rbegin();
+    for (size_t i = 0; i < k_ - 1 && iter != history_.rend(); ++i) {
+      ++iter;
+    }
+    // update the backward k-distance
+    k_dist_ = (*iter);
+  }
+
+  auto GetKDistance() const -> size_t { return k_dist_; };
+
+  auto GetEvictable() const -> bool { return is_evictable_; };
+
+  auto GetNumOfReferences() const -> size_t { return history_.size(); };
+
+  auto GetFrameId() const -> frame_id_t { return fid_; };
+
+  auto GetHistory() -> std::string {
+    std::string res = "[";
+    for (size_t h : history_) {
+      res += (std::to_string(h) + " ");
+    }
+    res += "]";
+    return res;
+  }
+
+  ~LRUKNode() = default;
+
  private:
   /** History of last seen K timestamps of this page. Least recent timestamp stored in front. */
   // Remove maybe_unused if you start using them. Feel free to change the member variables as you want.
 
-  [[maybe_unused]] std::list<size_t> history_;
-  [[maybe_unused]] size_t k_;
-  [[maybe_unused]] frame_id_t fid_;
-  [[maybe_unused]] bool is_evictable_{false};
+  std::list<size_t> history_;  // The least recent TS is in front, most recent TS is in the back
+  size_t k_;
+  frame_id_t fid_;
+  bool is_evictable_{false};
+  size_t k_dist_{0};
 };
 
 /**
@@ -147,15 +186,33 @@ class LRUKReplacer {
    */
   auto Size() -> size_t;
 
+  void PrintLists();
+
+ private:
+  /* Insert a node into the k_list_ based on backward k-distance. */
+  void InsertKNode(LRUKNode *node);
+
+  auto RemoveNode(frame_id_t *frame_id, std::list<LRUKNode *> *lst, std::unordered_map<frame_id_t, LRUKNode *> *map)
+      -> bool;
+
  private:
   // TODO(student): implement me! You can replace these member variables as you like.
   // Remove maybe_unused if you start using them.
-  [[maybe_unused]] std::unordered_map<frame_id_t, LRUKNode> node_store_;
-  [[maybe_unused]] size_t current_timestamp_{0};
-  [[maybe_unused]] size_t curr_size_{0};
-  [[maybe_unused]] size_t replacer_size_;
-  [[maybe_unused]] size_t k_;
-  [[maybe_unused]] std::mutex latch_;
+
+  // std::unordered_map<frame_id_t, LRUKNode> node_store_;
+  size_t current_timestamp_{0};
+  size_t curr_size_{0};   // number of evictable frames
+  size_t replacer_size_;  // maximum number of frames to store
+  size_t k_;
+  std::mutex latch_;
+
+  // frames with less than k references
+  std::list<LRUKNode *> default_list_;
+  std::unordered_map<frame_id_t, LRUKNode *> default_map_;
+
+  // frames with more than k references
+  std::list<LRUKNode *> k_list_;
+  std::unordered_map<frame_id_t, LRUKNode *> k_map_;
 };
 
 }  // namespace bustub
