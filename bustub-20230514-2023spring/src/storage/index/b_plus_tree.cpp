@@ -40,6 +40,34 @@ auto BPLUSTREE_TYPE::GetValue(const KeyType &key, std::vector<ValueType> *result
   // Declaration of context instance.
   Context ctx;
   (void)ctx;
+
+  ReadPageGuard guard = bpm_->FetchPageRead(header_page_id_);
+  auto page = guard.As<BPlusTreeHeaderPage>();
+  page_id_t root_page_id = page->root_page_id_;
+  // guard.Drop();
+
+  // b+ tree is empty
+  if (root_page_id == INVALID_PAGE_ID) {
+    return false;
+  }
+
+  guard = bpm_->FetchPageRead(root_page_id);
+  page = guard.As<BPlusTreePage>();
+
+  while (!page->IsLeafPage()) {
+    page = guard.As<BPlusTreeInternalPage>();
+    guard = bpm_->FetchPageRead(page->FindValue(key));
+    page = guard.As<BPlusTreePage>();
+  }
+
+  // find the leaf page
+  page = guard.As<BPlusTreeLeafPage>();
+  auto res = page->FindValue(key);
+  if (res != nullptr) {
+    result->push_back(res);
+    return true;
+  }
+
   return false;
 }
 
@@ -58,6 +86,24 @@ auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transact
   // Declaration of context instance.
   Context ctx;
   (void)ctx;
+
+  WritePageGuard guard = bpm_->FetchPageWrite(header_page_id_);
+  ctx.header_page_ = guard;
+  auto root_page = guard.AsMut<BPlusTreeHeaderPage>();
+
+  if (root_page->root_page_id_ == INVALID_PAGE_ID) { // create a new root node 
+    WritePageGuard header_guard = bpm_->NewPageGuarded(&root_page->root_page_id_);
+    ctx.root_page_id_ = root_page->root_page_id_;
+    auto page = header_guard.AsMut<BPlusTreeLeafPage>();
+    page->Insert(key, value);
+    return true;
+  }
+
+  // iterate until reaching the leaf node 
+
+
+  // remember to drop the header page guard and set it to nullopt when you want to unlock all
+
   return false;
 }
 

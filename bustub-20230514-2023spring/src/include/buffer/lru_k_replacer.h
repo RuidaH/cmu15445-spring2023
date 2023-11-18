@@ -15,6 +15,7 @@
 #include <iostream>
 #include <limits>
 #include <list>
+#include <memory>
 #include <mutex>  // NOLINT
 #include <string>
 #include <unordered_map>
@@ -190,10 +191,10 @@ class LRUKReplacer {
 
  private:
   /* Insert a node into the k_list_ based on backward k-distance. */
-  void InsertKNode(LRUKNode *node);
+  void InsertKNode(std::shared_ptr<LRUKNode> &node);
 
-  auto RemoveNode(frame_id_t *frame_id, std::list<LRUKNode *> *lst, std::unordered_map<frame_id_t, LRUKNode *> *map)
-      -> bool;
+  auto RemoveNode(frame_id_t *frame_id, std::list<std::shared_ptr<LRUKNode>> *lst,
+                  std::unordered_map<frame_id_t, std::shared_ptr<LRUKNode>> *map) -> bool;
 
  private:
   // TODO(student): implement me! You can replace these member variables as you like.
@@ -206,13 +207,21 @@ class LRUKReplacer {
   size_t k_;
   std::mutex latch_;
 
-  // frames with less than k references
-  std::list<LRUKNode *> default_list_;
-  std::unordered_map<frame_id_t, LRUKNode *> default_map_;
+  // // frames with less than k references
+  // std::list<LRUKNode *> default_list_;
+  // std::unordered_map<frame_id_t, LRUKNode *> default_map_;
+
+  // // frames with more than k references
+  // std::list<LRUKNode *> k_list_;
+  // std::unordered_map<frame_id_t, LRUKNode *> k_map_;
+
+  // frames with less than k references (FIFO style)
+  std::list<std::shared_ptr<LRUKNode>> default_list_;
+  std::unordered_map<frame_id_t, std::shared_ptr<LRUKNode>> default_map_;
 
   // frames with more than k references
-  std::list<LRUKNode *> k_list_;
-  std::unordered_map<frame_id_t, LRUKNode *> k_map_;
+  std::list<std::shared_ptr<LRUKNode>> k_list_;
+  std::unordered_map<frame_id_t, std::shared_ptr<LRUKNode>> k_map_;
 };
 
 }  // namespace bustub

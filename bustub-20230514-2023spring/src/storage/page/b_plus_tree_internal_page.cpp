@@ -32,19 +32,55 @@ void B_PLUS_TREE_INTERNAL_PAGE_TYPE::Init(int max_size) {}
 INDEX_TEMPLATE_ARGUMENTS
 auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::KeyAt(int index) const -> KeyType {
   // replace with your own code
-  KeyType key{};
-  return key;
+  // KeyType key{};
+  // return key;
+  if (index < size_) {
+    return array_[index].first;
+  }
+  return nullptr;
 }
 
 INDEX_TEMPLATE_ARGUMENTS
-void B_PLUS_TREE_INTERNAL_PAGE_TYPE::SetKeyAt(int index, const KeyType &key) {}
+void B_PLUS_TREE_INTERNAL_PAGE_TYPE::SetKeyAt(int index, const KeyType &key) {
+  if (index < size_) {
+    array_[index].first = key;
+  }
+}
 
 /*
  * Helper method to get the value associated with input "index"(a.k.a array
  * offset)
  */
 INDEX_TEMPLATE_ARGUMENTS
-auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::ValueAt(int index) const -> ValueType { return 0; }
+auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::ValueAt(int index) const -> ValueType { 
+  if (index < size_) {
+    return array_[index].second;
+  }
+}
+
+/**
+ * Find the right next page id (ValueType) based on the given key.
+*/
+INDEX_TEMPLATE_ARGUMENTS
+auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::FindValue(KeyType target) const -> ValueType {
+  int left = 1;
+  int res = -1;
+  int right = size_ - 1;
+  if (target > array_[right]) return ValueAt(right);
+  while (left <= right) {
+    int mid = left + (right - left) / 2;
+    if (KeyComparator(array_[mid].first, target) == 0) {
+      return ValueAt(mid);
+    } else if (KeyComparator(array_[mid].first, target) < 0) {
+      left = mid + 1;
+    } else {
+      right = mid - 1;
+      res = right;
+    }
+  }
+  return ValueAt(res); // return the floor of the not-founded target
+}
+
 
 // valuetype for internalNode should be page id_t
 template class BPlusTreeInternalPage<GenericKey<4>, page_id_t, GenericComparator<4>>;

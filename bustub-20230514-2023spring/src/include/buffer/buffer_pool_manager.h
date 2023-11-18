@@ -216,6 +216,8 @@ class BufferPoolManager {
    */
   auto FindFreeFrame(frame_id_t *free_frame_id) -> bool;
 
+  void PrintFrames();
+
   // TODO(student): You may add additional private members and helper functions
 };
 }  // namespace bustub

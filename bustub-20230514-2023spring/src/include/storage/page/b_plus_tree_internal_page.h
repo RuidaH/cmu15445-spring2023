@@ -73,6 +73,9 @@ class BPlusTreeInternalPage : public BPlusTreePage {
    */
   auto ValueAt(int index) const -> ValueType;
 
+  auto FindValue(KeyType target) const -> ValueType;
+  void Insert(KeyType key, ValueType value);
+
   /**
    * @brief For test only, return a string representing all keys in
    * this internal page, formatted as "(key1,key2,key3,...)"

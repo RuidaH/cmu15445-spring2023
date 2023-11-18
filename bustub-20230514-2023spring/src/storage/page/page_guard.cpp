@@ -56,7 +56,6 @@ BasicPageGuard::~BasicPageGuard() { Drop(); };  // NOLINT
 
 // Move constructor
 ReadPageGuard::ReadPageGuard(ReadPageGuard &&that) noexcept {
-  // call move operator overloading
   guard_ = std::move(that.guard_);
 };
 
@@ -64,12 +63,12 @@ auto ReadPageGuard::operator=(ReadPageGuard &&that) noexcept -> ReadPageGuard & 
   if (this == &that) {
     return *this;
   }
-
-  // if (that.guard_.page_ != nullptr) {
-  //   that.guard_.page_->RUnlatch();
-  // }
+  if (guard_.page_ != nullptr) {
+    guard_.page_->RUnlatch();
+  }
 
   guard_ = std::move(that.guard_);
+
   return *this;
 }
 
@@ -77,26 +76,36 @@ void ReadPageGuard::Drop() {
   if (guard_.page_ == nullptr) {
     return;
   }
-  if (guard_.page_->GetPageId() != INVALID_PAGE_ID) {
-    guard_.bpm_->UnpinPage(guard_.page_->GetPageId(), guard_.page_->IsDirty());
-  }
 
-  // 应该先把 frame 中 page 的资源给释放出去, 最后在释放 frame 的锁
   guard_.page_->RUnlatch();
-  guard_.bpm_ = nullptr;
-  guard_.page_ = nullptr;
-  guard_.is_dirty_ = false;
+  guard_.Drop();
+
+  // if (guard_.page_->GetPageId() != INVALID_PAGE_ID) {
+  //   LOG_DEBUG("ReadPageGuard (%d) unpinning the page", guard_.page_->GetPageId());
+  //   guard_.bpm_->UnpinPage(guard_.page_->GetPageId(), guard_.page_->IsDirty());
+  // }
+
+  // // 应该先把 frame 中 page 的资源给释放出去, 最后在释放 frame 的锁
+  // guard_.page_->RUnlatch();
+  // guard_.bpm_ = nullptr;
+  // guard_.page_ = nullptr;
+  // guard_.is_dirty_ = false;
 }
 
 ReadPageGuard::~ReadPageGuard() { Drop(); }  // NOLINT
 
 // ---------------------------
 
-WritePageGuard::WritePageGuard(WritePageGuard &&that) noexcept { guard_ = std::move(that.guard_); };
+WritePageGuard::WritePageGuard(WritePageGuard &&that) noexcept {
+  guard_ = std::move(that.guard_);
+};
 
 auto WritePageGuard::operator=(WritePageGuard &&that) noexcept -> WritePageGuard & {
   if (this == &that) {
     return *this;
+  }
+  if (guard_.page_ != nullptr) {
+    guard_.page_->WUnlatch();
   }
   guard_ = std::move(that.guard_);
   return *this;
@@ -107,15 +116,19 @@ void WritePageGuard::Drop() {
     return;
   }
 
-  if (guard_.page_->GetPageId() != INVALID_PAGE_ID) {
-    guard_.bpm_->UnpinPage(guard_.page_->GetPageId(), guard_.page_->IsDirty());
-  }
-
-  // release the write latch
   guard_.page_->WUnlatch();
-  guard_.page_ = nullptr;
-  guard_.bpm_ = nullptr;
-  guard_.is_dirty_ = false;
+  guard_.Drop();
+
+  // if (guard_.page_->GetPageId() != INVALID_PAGE_ID) {
+  //   LOG_DEBUG("WritePageGuard (%d) unpinning the page", guard_.page_->GetPageId());
+  //   guard_.bpm_->UnpinPage(guard_.page_->GetPageId(), guard_.page_->IsDirty());
+  // }
+
+  // // release the write latch
+  // guard_.page_->WUnlatch();
+  // guard_.page_ = nullptr;
+  // guard_.bpm_ = nullptr;
+  // guard_.is_dirty_ = false;
 }
 
 WritePageGuard::~WritePageGuard() { Drop(); }  // NOLINT
