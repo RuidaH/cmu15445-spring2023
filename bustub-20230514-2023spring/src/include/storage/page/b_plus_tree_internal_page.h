@@ -73,8 +73,13 @@ class BPlusTreeInternalPage : public BPlusTreePage {
    */
   auto ValueAt(int index) const -> ValueType;
 
-  auto FindValue(KeyType target) const -> ValueType;
-  void Insert(KeyType key, ValueType value);
+  auto FindValue(KeyType key, const KeyComparator &comparator) const -> ValueType;
+  auto Insert(const KeyType &key, const ValueType &value, const KeyComparator &comparator) -> bool;
+  void SetKeyValueAt(int index, const KeyType &key, const ValueType &value);
+  void SetValueAt(int index, const ValueType &value);
+  void CopyHalfFrom(MappingType *array, int min_size, int size);
+  void EraseHalf();
+  auto GetData() -> MappingType *;
 
   /**
    * @brief For test only, return a string representing all keys in
@@ -83,19 +88,20 @@ class BPlusTreeInternalPage : public BPlusTreePage {
    * @return std::string
    */
   auto ToString() const -> std::string {
-    std::string kstr = "(";
+    std::string kstr = "Size of page " + std::to_string(GetSize()) + "(";
     bool first = true;
 
     // first key of internal page is always invalid
-    for (int i = 1; i < GetSize(); i++) {
+    for (int i = 0; i < GetSize(); i++) {
       KeyType key = KeyAt(i);
+      ValueType val = ValueAt(i);
       if (first) {
         first = false;
       } else {
         kstr.append(",");
       }
 
-      kstr.append(std::to_string(key.ToString()));
+      kstr.append("{" + std::to_string(key.ToString()) + ", " + std::to_string(val) + "}");
     }
     kstr.append(")");
 

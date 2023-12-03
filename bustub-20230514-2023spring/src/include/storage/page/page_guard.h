@@ -63,6 +63,8 @@ class BasicPageGuard {
 
   auto GetData() -> const char * { return page_->GetData(); }
 
+  void SetDirty(bool is_dirty) { is_dirty_ = is_dirty; }
+
   template <class T>
   auto As() -> const T * {
     return reinterpret_cast<const T *>(GetData());
@@ -137,6 +139,8 @@ class ReadPageGuard {
 
   auto GetData() -> const char * { return guard_.GetData(); }
 
+  void SetDirty(bool is_dirty) { guard_.is_dirty_ = is_dirty; }
+
   template <class T>
   auto As() -> const T * {
     return guard_.As<T>();
@@ -196,6 +200,8 @@ class WritePageGuard {
   auto PageId() -> page_id_t { return guard_.PageId(); }
 
   auto GetData() -> const char * { return guard_.GetData(); }
+
+  void SetDirty(bool is_dirty) { guard_.is_dirty_ = is_dirty; }
 
   template <class T>
   auto As() -> const T * {

@@ -130,6 +130,11 @@ class BPlusTree {
    */
   auto ToPrintableBPlusTree(page_id_t root_id) -> PrintableBPlusTree;
 
+  /* helper function */
+  void InsertInParent(const KeyType &key, WritePageGuard &&new_page_guard, Context &ctx);
+  void PrintPage(WritePageGuard &guard, bool is_leaf_page);
+  void PrintPage(ReadPageGuard &guard, bool is_leaf_page);
+
   // member variable
   std::string index_name_;
   BufferPoolManager *bpm_;

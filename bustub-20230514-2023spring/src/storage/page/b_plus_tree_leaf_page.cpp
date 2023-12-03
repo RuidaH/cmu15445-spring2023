@@ -9,6 +9,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include <algorithm>
 #include <sstream>
 
 #include "common/exception.h"
@@ -27,8 +28,10 @@ namespace bustub {
  */
 INDEX_TEMPLATE_ARGUMENTS
 void B_PLUS_TREE_LEAF_PAGE_TYPE::Init(int max_size) {
-  max_size_ = max_size;
-  size = 0;
+  // LOG_DEBUG("Leaf page size = %d", max_size);
+  SetMaxSize(max_size);  // leaf page size = 255
+  SetSize(0);
+  SetPageType(IndexPageType::LEAF_PAGE);
   next_page_id_ = INVALID_PAGE_ID;
 }
 
@@ -47,41 +50,92 @@ void B_PLUS_TREE_LEAF_PAGE_TYPE::SetNextPageId(page_id_t next_page_id) { next_pa
  */
 INDEX_TEMPLATE_ARGUMENTS
 auto B_PLUS_TREE_LEAF_PAGE_TYPE::KeyAt(int index) const -> KeyType {
-  // replace with your own code
-  // KeyType key{};
-  // return key;
-  
-  if (index < size_) {
-    return array_[index].first;
-  }
-  return nullptr;
+  assert(index < GetSize());
+  return array_[index].first;
 }
 
 INDEX_TEMPLATE_ARGUMENTS
 auto B_PLUS_TREE_LEAF_PAGE_TYPE::ValueAt(int index) const -> ValueType {
-  if (index < size_) {
-    return array_[index].second;
+  assert(index < GetSize());
+  return array_[index].second;
+}
+
+/**
+ * Find the corresponding value based on the target in the leaf node
+ */
+INDEX_TEMPLATE_ARGUMENTS
+auto B_PLUS_TREE_LEAF_PAGE_TYPE::FindValue(const KeyType &key, ValueType &value, const KeyComparator &comparator) const
+    -> bool {
+  auto compare_first = [comparator](const MappingType &lhs, KeyType rhs) -> bool {
+    return comparator(lhs.first, rhs) < 0;
+  };
+
+  // 这里 - 1 是因为如果 key 的值比 array_ 中的所有值都大, 我要他返回 array_ 最后一个值
+  // 如果这里不 - 1 的话, 那么最后返回的 res 会在 array_ 外面一位
+  auto res = std::lower_bound(array_, array_ + GetSize() - 1, key, compare_first);
+  if (comparator(key, res->first) == 0) {
+    value = res->second;
+    return true;
   }
-  return nullptr;
+
+  return false;
+}
+
+/**
+ * Insert the <key, value> pair into the leaf page
+ * (if the duplicate key found, return false)
+ */
+INDEX_TEMPLATE_ARGUMENTS
+auto B_PLUS_TREE_LEAF_PAGE_TYPE::Insert(const KeyType &key, const ValueType &value, const KeyComparator &comparator)
+    -> bool {
+  auto compare_first = [comparator](const MappingType &lhs, KeyType rhs) -> bool {
+    return comparator(lhs.first, rhs) < 0;
+  };
+
+  int size = GetSize();
+  auto it = std::lower_bound(array_, array_ + size, key, compare_first);
+  if (it < array_ + size && comparator(key, it->first) == 0) {  // find the duplicate key
+    return false;
+  }
+
+  // insert new <key, value> pair
+  int index = std::distance(array_, it);
+  std::copy_backward(array_ + index, array_ + size, array_ + size + 1);
+  IncreaseSize(1);
+
+  array_[index].first = key;
+  array_[index].second = value;
+
+  return true;
 }
 
 INDEX_TEMPLATE_ARGUMENTS
-auto B_PLUS_TREE_LEAF_PAGE_TYPE::FindValue(int target) const -> ValueType {
-  int left = 0;
-  int right = size_ - 1;
-  while (left <= right) {
-    int mid = left + (right - left) / 2;
-    if (KeyComparator(array_[mid].first, target) == 0) {
-      return ValueAt(mid);
-    } else if (KeyComparator(array_[mid].first, target) < 0) {
-      left = mid + 1;
-    } else {
-      right = mid - 1;
-    }
-  }
-  return nullptr; // fail to find the target
+void B_PLUS_TREE_LEAF_PAGE_TYPE::SetNextPage(page_id_t page_id) { next_page_id_ = page_id; }
+
+INDEX_TEMPLATE_ARGUMENTS
+auto B_PLUS_TREE_LEAF_PAGE_TYPE::GetNextPageId() -> page_id_t { return next_page_id_; }
+
+INDEX_TEMPLATE_ARGUMENTS
+void B_PLUS_TREE_LEAF_PAGE_TYPE::CopyHalfFrom(MappingType *array, int min_size, int size) {
+  std::copy(array + min_size, array + size, array_);
 }
 
+INDEX_TEMPLATE_ARGUMENTS
+auto B_PLUS_TREE_LEAF_PAGE_TYPE::GetData() -> MappingType * { return array_; }
+
+// INDEX_TEMPLATE_ARGUMENTS
+// void B_PLUS_TREE_LEAF_PAGE_TYPE::EraseHalf() {
+//   for (int i = GetMinSize(); i < GetSize(); ++i) {
+//     SetKeyValueAt(i, -1, -1);
+//   }
+// }
+
+INDEX_TEMPLATE_ARGUMENTS
+void B_PLUS_TREE_LEAF_PAGE_TYPE::SetKeyValueAt(int index, const KeyType &key, const ValueType &value) {
+  assert(index < GetSize());
+  array_[index].first = key;
+  array_[index].second = value;
+}
 
 template class BPlusTreeLeafPage<GenericKey<4>, RID, GenericComparator<4>>;
 template class BPlusTreeLeafPage<GenericKey<8>, RID, GenericComparator<8>>;

@@ -27,7 +27,7 @@ using bustub::DiskManagerUnlimitedMemory;
 /**
  * This test should be passing with your Checkpoint 1 submission.
  */
-TEST(BPlusTreeTests, DISABLED_ScaleTest) {  // NOLINT
+TEST(BPlusTreeTests, ScaleTest) {  // NOLINT
   // create KeyComparator and index schema
   auto key_schema = ParseCreateStatement("a bigint");
   GenericComparator<8> comparator(key_schema.get());
@@ -56,16 +56,27 @@ TEST(BPlusTreeTests, DISABLED_ScaleTest) {  // NOLINT
   // randomized the insertion order
   auto rng = std::default_random_engine{};
   std::shuffle(keys.begin(), keys.end(), rng);
+  // int i = 0;
   for (auto key : keys) {
     int64_t value = key & 0xFFFFFFFF;
     rid.Set(static_cast<int32_t>(key >> 32), value);
     index_key.SetFromInteger(key);
+    // LOG_DEBUG("Inserting %d-th key", i++);
     tree.Insert(index_key, rid, transaction);
+    // std::cout << "Start accessing " << i++ << std::endl;
+    // std::cout << "******************************" << std::endl;
+    // tree.Print(bpm);
+    // std::cout << "******************************" << std::endl;
   }
+
+  std::cout << "Start accessing" << std::endl;
+  tree.Print(bpm);
+
   std::vector<RID> rids;
   for (auto key : keys) {
     rids.clear();
     index_key.SetFromInteger(key);
+    // LOG_DEBUG("Accessing %d-th key: %lld", i++, key);
     tree.GetValue(index_key, &rids);
     ASSERT_EQ(rids.size(), 1);
 
