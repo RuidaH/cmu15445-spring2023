@@ -45,7 +45,7 @@ class BPlusTreeInternalPage : public BPlusTreePage {
    * the creation of a new page to make a valid BPlusTreeInternalPage
    * @param max_size Maximal size of the page
    */
-  void Init(int max_size = INTERNAL_PAGE_SIZE);
+  void Init(page_id_t parent_page_id, int max_size = INTERNAL_PAGE_SIZE);
 
   /**
    * @param index The index of the key to get. Index must be non-zero.
@@ -73,13 +73,18 @@ class BPlusTreeInternalPage : public BPlusTreePage {
    */
   auto ValueAt(int index) const -> ValueType;
 
-  auto FindValue(KeyType key, const KeyComparator &comparator) const -> ValueType;
+  auto FindValue(KeyType key, const KeyComparator &comparator, int *child_page_index = nullptr) const -> ValueType;
   auto Insert(const KeyType &key, const ValueType &value, const KeyComparator &comparator) -> bool;
+  auto Delete(const KeyType &key, const ValueType &value, const KeyComparator &comparator) -> bool;
   void SetKeyValueAt(int index, const KeyType &key, const ValueType &value);
   void SetValueAt(int index, const ValueType &value);
   void CopyHalfFrom(MappingType *array, int min_size, int size);
   void EraseHalf();
   auto GetData() -> MappingType *;
+  auto GetParentPageId() -> page_id_t;
+  void SetParentPageId(page_id_t parent_page_id);
+  void Merge(MappingType *array, int size);
+  void ShiftData(int dist);
 
   /**
    * @brief For test only, return a string representing all keys in
@@ -110,6 +115,7 @@ class BPlusTreeInternalPage : public BPlusTreePage {
 
  private:
   // Flexible array member for page data.
+  page_id_t parent_page_id_;
   MappingType array_[0];
 };
 }  // namespace bustub

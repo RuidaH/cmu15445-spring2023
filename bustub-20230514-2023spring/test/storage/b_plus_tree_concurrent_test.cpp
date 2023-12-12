@@ -122,7 +122,7 @@ void LookupHelper(BPlusTree<GenericKey<8>, RID, GenericComparator<8>> *tree, con
   delete transaction;
 }
 
-TEST(BPlusTreeConcurrentTest, DISABLED_InsertTest1) {
+TEST(BPlusTreeConcurrentTest, InsertTest1) {
   // create KeyComparator and index schema
   auto key_schema = ParseCreateStatement("a bigint");
   GenericComparator<8> comparator(key_schema.get());
@@ -154,9 +154,29 @@ TEST(BPlusTreeConcurrentTest, DISABLED_InsertTest1) {
     EXPECT_EQ(rids[0].GetSlotNum(), value);
   }
 
+  std::cout << "\n++++++++++++++++++++++++" << std::endl;
+  tree.Print(bpm);
+  std::cout << "++++++++++++++++++++++++\n" << std::endl;
+
   int64_t start_key = 1;
   int64_t current_key = start_key;
   index_key.SetFromInteger(start_key);
+  // int i = 0;
+  // int stop = 5;
+  // for (auto iterator = tree.Begin(index_key); iterator != tree.End(); ++iterator) {
+  //   if (i < stop) {
+  //     auto location = (*iterator).second;
+  //     EXPECT_EQ(location.GetPageId(), 0);
+  //     EXPECT_EQ(location.GetSlotNum(), current_key);
+  //     current_key = current_key + 1;
+  //     ++i;
+  //   }
+  //   if (i == stop) {
+  //     break;
+  //   }
+
+  // }
+
   for (auto iterator = tree.Begin(index_key); iterator != tree.End(); ++iterator) {
     auto location = (*iterator).second;
     EXPECT_EQ(location.GetPageId(), 0);
@@ -170,7 +190,7 @@ TEST(BPlusTreeConcurrentTest, DISABLED_InsertTest1) {
   delete bpm;
 }
 
-TEST(BPlusTreeConcurrentTest, DISABLED_InsertTest2) {
+TEST(BPlusTreeConcurrentTest, InsertTest2) {
   // create KeyComparator and index schema
   auto key_schema = ParseCreateStatement("a bigint");
   GenericComparator<8> comparator(key_schema.get());
@@ -217,7 +237,7 @@ TEST(BPlusTreeConcurrentTest, DISABLED_InsertTest2) {
   delete bpm;
 }
 
-TEST(BPlusTreeConcurrentTest, DISABLED_DeleteTest1) {
+TEST(BPlusTreeConcurrentTest, DeleteTest1) {
   // create KeyComparator and index schema
   auto key_schema = ParseCreateStatement("a bigint");
   GenericComparator<8> comparator(key_schema.get());
@@ -256,7 +276,7 @@ TEST(BPlusTreeConcurrentTest, DISABLED_DeleteTest1) {
   delete bpm;
 }
 
-TEST(BPlusTreeConcurrentTest, DISABLED_DeleteTest2) {
+TEST(BPlusTreeConcurrentTest, DeleteTest2) {
   // create KeyComparator and index schema
   auto key_schema = ParseCreateStatement("a bigint");
   GenericComparator<8> comparator(key_schema.get());
@@ -295,7 +315,7 @@ TEST(BPlusTreeConcurrentTest, DISABLED_DeleteTest2) {
   delete bpm;
 }
 
-TEST(BPlusTreeConcurrentTest, DISABLED_MixTest1) {
+TEST(BPlusTreeConcurrentTest, MixTest1) {
   // create KeyComparator and index schema
   auto key_schema = ParseCreateStatement("a bigint");
   GenericComparator<8> comparator(key_schema.get());
@@ -336,7 +356,7 @@ TEST(BPlusTreeConcurrentTest, DISABLED_MixTest1) {
   delete bpm;
 }
 
-TEST(BPlusTreeConcurrentTest, DISABLED_MixTest2) {
+TEST(BPlusTreeConcurrentTest, MixTest2) {
   // create KeyComparator and index schema
   auto key_schema = ParseCreateStatement("a bigint");
   GenericComparator<8> comparator(key_schema.get());

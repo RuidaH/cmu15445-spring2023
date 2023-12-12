@@ -17,6 +17,7 @@
 #include <queue>
 #include <shared_mutex>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "common/config.h"
@@ -132,6 +133,12 @@ class BPlusTree {
 
   /* helper function */
   void InsertInParent(const KeyType &key, WritePageGuard &&new_page_guard, Context &ctx);
+  void DeleteEntry(Context &ctx, KeyType key, ValueType val, std::unordered_map<page_id_t, int> &page_id_to_index);
+  void DeleteInternalEntry(Context &ctx, KeyType key, page_id_t val,
+                           std::unordered_map<page_id_t, int> &page_id_to_index);
+  // auto FindSibling(Context &ctx);
+
+  // auto FindLeafPageId(const KeyType &key, page_id_t &page_id) -> bool;
   void PrintPage(WritePageGuard &guard, bool is_leaf_page);
   void PrintPage(ReadPageGuard &guard, bool is_leaf_page);
 

@@ -24,10 +24,11 @@ namespace bustub {
  * Including set page type, set current size, and set max page size
  */
 INDEX_TEMPLATE_ARGUMENTS
-void B_PLUS_TREE_INTERNAL_PAGE_TYPE::Init(int max_size) {
+void B_PLUS_TREE_INTERNAL_PAGE_TYPE::Init(page_id_t parent_page_id, int max_size) {
   SetMaxSize(max_size);
   SetSize(0);
   SetPageType(IndexPageType::INTERNAL_PAGE);
+  SetParentPageId(parent_page_id);
 }
 /*
  * Helper method to get/set the key associated with input "index"(a.k.a
@@ -72,7 +73,8 @@ void B_PLUS_TREE_INTERNAL_PAGE_TYPE::SetValueAt(int index, const ValueType &valu
  * Find the right next page id (ValueType) based on the given key.
  */
 INDEX_TEMPLATE_ARGUMENTS
-auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::FindValue(KeyType key, const KeyComparator &comparator) const -> ValueType {
+auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::FindValue(KeyType key, const KeyComparator &comparator,
+                                               int *child_page_index) const -> ValueType {
   // 这里需要 <=; 因为搜索的 key 是有可能跟中间节点的 key 相等的
   auto compare_first = [comparator](const MappingType &lhs, KeyType rhs) -> bool {
     return comparator(lhs.first, rhs) <= 0;
@@ -82,9 +84,14 @@ auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::FindValue(KeyType key, const KeyComparator 
   res = std::prev(res);
   // res = (res == array_ + GetSize()) ? std::prev(res) : res;
 
-  LOG_DEBUG("Internal page: %s", ToString().c_str());
-  LOG_DEBUG("Internal page findValue() result: <%s, %s>", std::to_string(res->first.ToString()).c_str(),
-            std::to_string(res->second).c_str());
+  // 记录一下孩子节点的索引下标, 用于删除
+  if (child_page_index != nullptr) {
+    *child_page_index = std::distance(array_, res);
+  }
+
+  // LOG_DEBUG("Internal page: %s", ToString().c_str());
+  // LOG_DEBUG("Internal page findValue() result: <%s, %s>", std::to_string(res->first.ToString()).c_str(),
+  //           std::to_string(res->second).c_str());
 
   return res->second;
 }
@@ -123,15 +130,54 @@ auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::Insert(const KeyType &key, const ValueType 
 
   // insert new <key, value> pair
   int index = std::distance(array_, it);
-
-  LOG_DEBUG("Internal page insertion: distance %d", index);
-
   std::copy_backward(array_ + index, array_ + size, array_ + size + 1);
   IncreaseSize(1);
   array_[index] = std::make_pair(key, value);
 
+  // LOG_DEBUG("Internal page insertion: distance %d", index);
+
   return true;
 }
+
+INDEX_TEMPLATE_ARGUMENTS
+auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::Delete(const KeyType &key, const ValueType &value, const KeyComparator &comparator)
+    -> bool {
+  auto compare_first = [comparator](const MappingType &lhs, KeyType rhs) -> bool {
+    return comparator(lhs.first, rhs) < 0;
+  };
+
+  auto res = std::lower_bound(array_, array_ + GetSize() - 1, key, compare_first);
+  if (comparator(key, res->first) == 0 && value == res->second) {
+    int dist = std::distance(array_, res);
+    std::copy(array_ + dist + 1, array_ + GetSize(), array_ + dist);
+    IncreaseSize(-1);
+    return true;
+  }
+
+  return false;
+}
+
+INDEX_TEMPLATE_ARGUMENTS
+void B_PLUS_TREE_INTERNAL_PAGE_TYPE::Merge(MappingType *array, int size) {
+  std::copy(array, array + size, array_ + GetSize());
+  IncreaseSize(size);
+}
+
+INDEX_TEMPLATE_ARGUMENTS
+void B_PLUS_TREE_INTERNAL_PAGE_TYPE::ShiftData(int dist) {
+  if (dist > 0) {  // 向右移动
+    std::copy_backward(array_, array_ + GetSize(), array_ + GetSize() + dist);
+  } else if (dist < 0) {  // 向左移动
+    std::copy(array_ - dist, array_ + GetSize(), array_);
+  }
+  IncreaseSize(dist);
+}
+
+INDEX_TEMPLATE_ARGUMENTS
+void B_PLUS_TREE_INTERNAL_PAGE_TYPE::SetParentPageId(page_id_t parent_page_id) { parent_page_id_ = parent_page_id; }
+
+INDEX_TEMPLATE_ARGUMENTS
+auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::GetParentPageId() -> page_id_t { return parent_page_id_; }
 
 INDEX_TEMPLATE_ARGUMENTS
 void B_PLUS_TREE_INTERNAL_PAGE_TYPE::CopyHalfFrom(MappingType *array, int min_size, int size) {

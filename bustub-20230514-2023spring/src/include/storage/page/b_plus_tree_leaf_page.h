@@ -52,7 +52,7 @@ class BPlusTreeLeafPage : public BPlusTreePage {
    * method to set default values
    * @param max_size Max size of the leaf node
    */
-  void Init(int max_size = LEAF_PAGE_SIZE);
+  void Init(page_id_t parent_page_id, int max_size = LEAF_PAGE_SIZE);
 
   // helper methods
   auto GetNextPageId() const -> page_id_t;
@@ -61,13 +61,19 @@ class BPlusTreeLeafPage : public BPlusTreePage {
   auto ValueAt(int index) const -> ValueType;
   void SetKeyValueAt(int index, const KeyType &key, const ValueType &value);
 
-  auto FindValue(const KeyType &key, ValueType &value, const KeyComparator &comparator) const -> bool;
+  auto FindValue(const KeyType &key, ValueType &value, const KeyComparator &comparator, int *index = nullptr) const
+      -> bool;
   auto Insert(const KeyType &key, const ValueType &value, const KeyComparator &comparator) -> bool;
+  auto Delete(const KeyType &key, const ValueType &value, const KeyComparator &comparator) -> bool;
   void SetNextPage(page_id_t page_id);
   void CopyHalfFrom(MappingType *array, int min_size, int size);
   void EraseHalf();
   auto GetData() -> MappingType *;
   auto GetNextPageId() -> page_id_t;
+  auto GetParentPageId() -> page_id_t;
+  void SetParentPageId(page_id_t parent_page_id);
+  void Merge(MappingType *array, int size);
+  void ShiftData(int dist);
 
   /**
    * @brief for test only return a string representing all keys in
@@ -96,6 +102,7 @@ class BPlusTreeLeafPage : public BPlusTreePage {
 
  private:
   page_id_t next_page_id_;
+  page_id_t parent_page_id_;
   // Flexible array member for page data.
   MappingType array_[0];
 };

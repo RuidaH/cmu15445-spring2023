@@ -27,12 +27,13 @@ namespace bustub {
  * Including set page type, set current size to zero, set next page id and set max size
  */
 INDEX_TEMPLATE_ARGUMENTS
-void B_PLUS_TREE_LEAF_PAGE_TYPE::Init(int max_size) {
+void B_PLUS_TREE_LEAF_PAGE_TYPE::Init(page_id_t parent_page_id, int max_size) {
   // LOG_DEBUG("Leaf page size = %d", max_size);
   SetMaxSize(max_size);  // leaf page size = 255
   SetSize(0);
   SetPageType(IndexPageType::LEAF_PAGE);
   next_page_id_ = INVALID_PAGE_ID;
+  SetParentPageId(parent_page_id);
 }
 
 /**
@@ -64,8 +65,8 @@ auto B_PLUS_TREE_LEAF_PAGE_TYPE::ValueAt(int index) const -> ValueType {
  * Find the corresponding value based on the target in the leaf node
  */
 INDEX_TEMPLATE_ARGUMENTS
-auto B_PLUS_TREE_LEAF_PAGE_TYPE::FindValue(const KeyType &key, ValueType &value, const KeyComparator &comparator) const
-    -> bool {
+auto B_PLUS_TREE_LEAF_PAGE_TYPE::FindValue(const KeyType &key, ValueType &value, const KeyComparator &comparator,
+                                           int *index) const -> bool {
   auto compare_first = [comparator](const MappingType &lhs, KeyType rhs) -> bool {
     return comparator(lhs.first, rhs) < 0;
   };
@@ -75,6 +76,12 @@ auto B_PLUS_TREE_LEAF_PAGE_TYPE::FindValue(const KeyType &key, ValueType &value,
   auto res = std::lower_bound(array_, array_ + GetSize() - 1, key, compare_first);
   if (comparator(key, res->first) == 0) {
     value = res->second;
+
+    if (index != nullptr) {
+      std::cout << "Locating the starting index: " << std::distance(array_, res) << std::endl;
+      *index = std::distance(array_, res);
+    }
+
     return true;
   }
 
@@ -98,8 +105,19 @@ auto B_PLUS_TREE_LEAF_PAGE_TYPE::Insert(const KeyType &key, const ValueType &val
     return false;
   }
 
+  // std::string test;
+  // for (int i = 0; i < GetMaxSize(); ++i) {
+  //   test += ("(" + std::to_string(i) + ")[" + std::to_string(array_[i].first.ToString()) + ": {" +
+  //            array_[i].second.ToString() + "} ");
+  // }
+  // LOG_DEBUG("Before insertion | leaf page: %s", test.c_str());
+
+  // 可能的解决办法, 先分裂, 再插入
+
   // insert new <key, value> pair
   int index = std::distance(array_, it);
+  LOG_DEBUG("Testing fot Insert (Leaf Page) | index: %d; size: %d; GetSize(): %d; size + 1: %d; with key: %s", index,
+            size, GetSize(), size + 1, std::to_string(key.ToString()).c_str());
   std::copy_backward(array_ + index, array_ + size, array_ + size + 1);
   IncreaseSize(1);
 
@@ -108,6 +126,51 @@ auto B_PLUS_TREE_LEAF_PAGE_TYPE::Insert(const KeyType &key, const ValueType &val
 
   return true;
 }
+
+INDEX_TEMPLATE_ARGUMENTS
+auto B_PLUS_TREE_LEAF_PAGE_TYPE::Delete(const KeyType &key, const ValueType &value, const KeyComparator &comparator)
+    -> bool {
+  if (GetSize() == 0) {
+    return false;
+  }
+
+  auto compare_first = [comparator](const MappingType &lhs, KeyType rhs) -> bool {
+    return comparator(lhs.first, rhs) < 0;
+  };
+
+  auto res = std::lower_bound(array_, array_ + GetSize() - 1, key, compare_first);
+  if (comparator(key, res->first) == 0 && value == res->second) {
+    // remove the <key, value> from the leaf node
+    int dist = std::distance(array_, res);
+    std::copy(array_ + dist + 1, array_ + GetSize(), array_ + dist);
+    IncreaseSize(-1);
+    return true;
+  }
+
+  return false;
+}
+
+INDEX_TEMPLATE_ARGUMENTS
+void B_PLUS_TREE_LEAF_PAGE_TYPE::Merge(MappingType *array, int size) {
+  std::copy(array, array + size, array_ + GetSize());
+  IncreaseSize(size);
+}
+
+INDEX_TEMPLATE_ARGUMENTS
+void B_PLUS_TREE_LEAF_PAGE_TYPE::ShiftData(int dist) {
+  if (dist > 0) {  // 向右移动
+    std::copy_backward(array_, array_ + GetSize(), array_ + GetSize() + dist);
+  } else if (dist < 0) {  // 向左移动
+    std::copy(array_ - dist, array_ + GetSize(), array_);
+  }
+  IncreaseSize(dist);
+}
+
+INDEX_TEMPLATE_ARGUMENTS
+void B_PLUS_TREE_LEAF_PAGE_TYPE::SetParentPageId(page_id_t parent_page_id) { parent_page_id_ = parent_page_id; }
+
+INDEX_TEMPLATE_ARGUMENTS
+auto B_PLUS_TREE_LEAF_PAGE_TYPE::GetParentPageId() -> page_id_t { return parent_page_id_; }
 
 INDEX_TEMPLATE_ARGUMENTS
 void B_PLUS_TREE_LEAF_PAGE_TYPE::SetNextPage(page_id_t page_id) { next_page_id_ = page_id; }
