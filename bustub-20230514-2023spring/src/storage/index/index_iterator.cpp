@@ -79,8 +79,8 @@ auto INDEXITERATOR_TYPE::operator++() -> INDEXITERATOR_TYPE & {
   entry_.second = next_page->ValueAt(index_);
   cur_page_id_ = next_page_id;
 
-  LOG_DEBUG("after iterator++ | {%s, <%s>}", std::to_string(entry_.first.ToString()).c_str(),
-            entry_.second.ToString().c_str());
+  //   LOG_DEBUG("after iterator++ | {%s, <%s>}", std::to_string(entry_.first.ToString()).c_str(),
+  //             entry_.second.ToString().c_str());
 
   return *this;
 }

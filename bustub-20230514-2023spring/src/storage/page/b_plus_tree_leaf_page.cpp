@@ -105,24 +105,48 @@ auto B_PLUS_TREE_LEAF_PAGE_TYPE::Insert(const KeyType &key, const ValueType &val
     return false;
   }
 
-  // std::string test;
-  // for (int i = 0; i < GetMaxSize(); ++i) {
-  //   test += ("(" + std::to_string(i) + ")[" + std::to_string(array_[i].first.ToString()) + ": {" +
-  //            array_[i].second.ToString() + "} ");
-  // }
-  // LOG_DEBUG("Before insertion | leaf page: %s", test.c_str());
+  // if (size > 252) {
+  //   std::string test;
+  //   for (int i = 0; i < GetSize(); ++i) {
+  //     // std::cout << "iteration: " << i << std::endl;
+  //     // test += ("(" + std::to_string(i) + ")[" + std::to_string(array_[i].first.ToString()) + ": {" +
+  //     //          array_[i].second.ToString() + "} ");
+  //     test += ("(" + std::to_string(i) + ")[" + std::to_string(array_[i].first.ToString()) + "]");
+  //   }
+  //   LOG_DEBUG("Before insertion | leaf page: %s", test.c_str());
 
-  // 可能的解决办法, 先分裂, 再插入
+  //   // LOG_DEBUG("Before insertion | The last entry: {%s, %s}",
+  //   //           std::to_string(array_[GetMaxSize() - 1].first.ToString()).c_str(),
+  //   //           array_[GetMaxSize() - 1].second.ToString().c_str());
+
+  //   LOG_DEBUG("Before insertion | The last entry: {%s}",
+  //             std::to_string(array_[GetMaxSize() - 1].first.ToString()).c_str());
+  // }
+
+  LOG_DEBUG("Before insertion | The last entry: {%s}",
+            std::to_string(array_[GetMaxSize() - 1].first.ToString()).c_str());
 
   // insert new <key, value> pair
   int index = std::distance(array_, it);
-  LOG_DEBUG("Testing fot Insert (Leaf Page) | index: %d; size: %d; GetSize(): %d; size + 1: %d; with key: %s", index,
-            size, GetSize(), size + 1, std::to_string(key.ToString()).c_str());
-  std::copy_backward(array_ + index, array_ + size, array_ + size + 1);
-  IncreaseSize(1);
+  LOG_DEBUG("Leaf page insertion | index: %d; size: %d; size + 1: %d; with key: %s", index, size, size + 1,
+            std::to_string(key.ToString()).c_str());
+
+  // std::copy_backward(array_ + index, array_ + size, array_ + size + 1);
+  std::move_backward(array_ + index, array_ + size, array_ + size + 1);
+
+  // for (int i = GetSize() - 1; i >= index; i--) {
+  //   if (size > 252) {
+  //     LOG_DEBUG("Shifting data from i = %d to i + 1 = %d", i, i + 1);
+  //   }
+  //   array_[i + 1] = array_[i];
+  // }
+
+  LOG_DEBUG("After insertion | The last entry: {%s}",
+            std::to_string(array_[GetMaxSize() - 1].first.ToString()).c_str());
 
   array_[index].first = key;
   array_[index].second = value;
+  IncreaseSize(1);
 
   return true;
 }
@@ -142,6 +166,10 @@ auto B_PLUS_TREE_LEAF_PAGE_TYPE::Delete(const KeyType &key, const ValueType &val
   if (comparator(key, res->first) == 0 && value == res->second) {
     // remove the <key, value> from the leaf node
     int dist = std::distance(array_, res);
+
+    LOG_DEBUG("Leaf page Deletion | index: %d; size: %d; size + 1: %d; with key: %s", dist, GetSize(), GetSize() - 1,
+              std::to_string(key.ToString()).c_str());
+
     std::copy(array_ + dist + 1, array_ + GetSize(), array_ + dist);
     IncreaseSize(-1);
     return true;
