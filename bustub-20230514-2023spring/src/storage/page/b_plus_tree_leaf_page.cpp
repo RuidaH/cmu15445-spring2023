@@ -102,34 +102,18 @@ auto B_PLUS_TREE_LEAF_PAGE_TYPE::Insert(const KeyType &key, const ValueType &val
   int size = GetSize();
   auto it = std::lower_bound(array_, array_ + size, key, compare_first);
   if (it < array_ + size && comparator(key, it->first) == 0) {  // find the duplicate key
+    LOG_DEBUG("Leaf insert | find the duplicate key %s/%s at index %td", std::to_string(key.ToString()).c_str(),
+              std::to_string(it->first.ToString()).c_str(), std::distance(array_, it));
     return false;
   }
 
-  // if (size > 252) {
-  //   std::string test;
-  //   for (int i = 0; i < GetSize(); ++i) {
-  //     // std::cout << "iteration: " << i << std::endl;
-  //     // test += ("(" + std::to_string(i) + ")[" + std::to_string(array_[i].first.ToString()) + ": {" +
-  //     //          array_[i].second.ToString() + "} ");
-  //     test += ("(" + std::to_string(i) + ")[" + std::to_string(array_[i].first.ToString()) + "]");
-  //   }
-  //   LOG_DEBUG("Before insertion | leaf page: %s", test.c_str());
-
-  //   // LOG_DEBUG("Before insertion | The last entry: {%s, %s}",
-  //   //           std::to_string(array_[GetMaxSize() - 1].first.ToString()).c_str(),
-  //   //           array_[GetMaxSize() - 1].second.ToString().c_str());
-
-  //   LOG_DEBUG("Before insertion | The last entry: {%s}",
-  //             std::to_string(array_[GetMaxSize() - 1].first.ToString()).c_str());
-  // }
-
-  LOG_DEBUG("Before insertion | The last entry: {%s}",
-            std::to_string(array_[GetMaxSize() - 1].first.ToString()).c_str());
+  // LOG_DEBUG("Before insertion | The last entry: {%s}",
+  //           std::to_string(array_[GetMaxSize() - 1].first.ToString()).c_str());
 
   // insert new <key, value> pair
   int index = std::distance(array_, it);
-  LOG_DEBUG("Leaf page insertion | index: %d; size: %d; size + 1: %d; with key: %s", index, size, size + 1,
-            std::to_string(key.ToString()).c_str());
+  // LOG_DEBUG("Leaf page insertion | index: %d; size: %d; size + 1: %d; with key: %s", index, size, size + 1,
+  //           std::to_string(key.ToString()).c_str());
 
   // std::copy_backward(array_ + index, array_ + size, array_ + size + 1);
   std::move_backward(array_ + index, array_ + size, array_ + size + 1);
@@ -141,12 +125,19 @@ auto B_PLUS_TREE_LEAF_PAGE_TYPE::Insert(const KeyType &key, const ValueType &val
   //   array_[i + 1] = array_[i];
   // }
 
-  LOG_DEBUG("After insertion | The last entry: {%s}",
-            std::to_string(array_[GetMaxSize() - 1].first.ToString()).c_str());
+  // LOG_DEBUG("After insertion | The last entry: {%s}",
+  //           std::to_string(array_[GetMaxSize() - 1].first.ToString()).c_str());
 
   array_[index].first = key;
   array_[index].second = value;
   IncreaseSize(1);
+
+  std::string str;
+  for (int i = 0; i < GetSize(); ++i) {
+    str += ("[" + std::to_string(array_[i].first.ToString()) + "] ");
+  }
+
+  // LOG_DEBUG("Leaf insert | content after insertion with size %d: %s", GetSize(), str.c_str());
 
   return true;
 }

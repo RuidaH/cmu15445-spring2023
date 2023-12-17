@@ -254,164 +254,21 @@ auto BufferPoolManager::DeletePage(page_id_t page_id) -> bool {
 auto BufferPoolManager::AllocatePage() -> page_id_t { return next_page_id_++; }
 
 auto BufferPoolManager::FetchPageBasic(page_id_t page_id) -> BasicPageGuard {
-  std::lock_guard<std::mutex> lock(latch_);
-  // // LOG_DEBUG("FetchPageBasic: page_id %d", page_id);
-
-  // find the page_id in the buffer pool
-  if (page_table_.find(page_id) != page_table_.end()) {
-    auto frame_id = page_table_[page_id];
-    pages_[frame_id].pin_count_++;
-
-    replacer_->RecordAccess(frame_id);
-    replacer_->SetEvictable(frame_id, false);
-
-    // // LOG_DEBUG("FetchPageBasic: Find the page id %d in frame id %d", page_id, frame_id);
-
-    PrintFrames();
-
-    return {this, &pages_[frame_id]};
-  }
-
-  if (replacer_->Size() == 0 && free_list_.empty()) {
-    // // LOG_DEBUG("FetchPageBasic: Replacer size: %zu; Free list size: %zu", replacer_->Size(), free_list_.size());
-    // // LOG_DEBUG("FetchPageBasic: No available free frame for page id: %d", page_id);
-    return {this, nullptr};
-  }
-
-  frame_id_t free_frame_id;
-  if (FindFreeFrame(&free_frame_id)) {
-    // read the page from the disk
-    pages_[free_frame_id].page_id_ = page_id;
-    pages_[free_frame_id].ResetMemory();
-    disk_manager_->ReadPage(page_id, pages_[free_frame_id].data_);
-    pages_[free_frame_id].is_dirty_ = false;
-    pages_[free_frame_id].pin_count_ = 1;
-
-    replacer_->RecordAccess(free_frame_id);
-    replacer_->SetEvictable(free_frame_id, false);
-
-    page_table_[page_id] = free_frame_id;
-
-    // // LOG_DEBUG("FetchPageBasic: Allocate the page id %d in frame id %d", page_id, free_frame_id);
-    PrintFrames();
-
-    return {this, &pages_[free_frame_id]};
-  }
-
-  // // LOG_DEBUG("FetchPageBasic: Fail to find a free frame for page id: %d", page_id);
-
-  return {this, nullptr};
+  return BasicPageGuard{this, FetchPage(page_id)};
 }
 
 // fetch the page and put the read latch on the page
 auto BufferPoolManager::FetchPageRead(page_id_t page_id) -> ReadPageGuard {
-  std::unique_lock<std::mutex> lock(latch_);
-  // // LOG_DEBUG("FetchPageRead: page_id %d", page_id);
-
-  // find the page_id in the buffer pool
-  if (page_table_.find(page_id) != page_table_.end()) {
-    auto frame_id = page_table_[page_id];
-    pages_[frame_id].pin_count_++;
-
-    replacer_->RecordAccess(frame_id);
-    replacer_->SetEvictable(frame_id, false);
-
-    // // LOG_DEBUG("FetchPageRead: Find the page id %d in frame id %d", page_id, frame_id);
-    PrintFrames();
-
-    lock.unlock();
-    pages_[frame_id].RLatch();
-
-    return {this, &pages_[frame_id]};
-  }
-
-  if (replacer_->Size() == 0 && free_list_.empty()) {
-    // // LOG_DEBUG("FetchPageRead: Replacer size: %zu; Free list size: %zu", replacer_->Size(), free_list_.size());
-    // // LOG_DEBUG("FetchPageRead: No available free frame for page id: %d", page_id);
+  Page *page = FetchPage(page_id);
+  if (page == nullptr) {
     return {this, nullptr};
   }
-
-  frame_id_t free_frame_id;
-  if (FindFreeFrame(&free_frame_id)) {
-    // read the page from the disk
-    pages_[free_frame_id].page_id_ = page_id;
-    pages_[free_frame_id].ResetMemory();
-    disk_manager_->ReadPage(page_id, pages_[free_frame_id].data_);
-    pages_[free_frame_id].is_dirty_ = false;
-    pages_[free_frame_id].pin_count_ = 1;
-
-    replacer_->RecordAccess(free_frame_id);
-    replacer_->SetEvictable(free_frame_id, false);
-
-    page_table_[page_id] = free_frame_id;
-
-    // // LOG_DEBUG("FetchPageRead: Allocate the page id %d in frame id %d", page_id, free_frame_id);
-    PrintFrames();
-
-    lock.unlock();
-    pages_[free_frame_id].RLatch();
-
-    return {this, &pages_[free_frame_id]};
-  }
-
-  // // LOG_DEBUG("FetchPageRead: Fail to find a free frame for page id: %d", page_id);
-
-  return {this, nullptr};
+  page->RLatch();
+  return {this, page};
 }
 
 // fetch the page and put the write latch on the page
 auto BufferPoolManager::FetchPageWrite(page_id_t page_id) -> WritePageGuard {
-  // std::unique_lock<std::mutex> lock(latch_);
-  // // // LOG_DEBUG("FetchPageWrite: page_id %d", page_id);
-
-  // // find the page_id in the buffer pool
-  // if (page_table_.find(page_id) != page_table_.end()) {
-  //   auto frame_id = page_table_[page_id];
-  //   pages_[frame_id].pin_count_++;
-
-  //   replacer_->RecordAccess(frame_id);
-  //   replacer_->SetEvictable(frame_id, false);
-
-  //   // // LOG_DEBUG("FetchPageWrite: Find the page id %d in frame id %d", page_id, frame_id);
-  //   PrintFrames();
-
-  //   lock.unlock();
-  //   pages_[frame_id].WLatch();  // latch_ 解锁之后在加锁
-
-  //   return {this, &pages_[frame_id]};
-  // }
-
-  // if (replacer_->Size() == 0 && free_list_.empty()) {
-  //   // // LOG_DEBUG("FetchPageWrite: Replacer size: %zu; Free list size: %zu", replacer_->Size(), free_list_.size());
-  //   // // LOG_DEBUG("FetchPageWrite: No available free frame for page id: %d", page_id);
-  //   return {this, nullptr};
-  // }
-
-  // frame_id_t free_frame_id;
-  // if (FindFreeFrame(&free_frame_id)) {
-  //   // read the page from the disk
-  //   pages_[free_frame_id].page_id_ = page_id;
-  //   pages_[free_frame_id].ResetMemory();
-  //   disk_manager_->ReadPage(page_id, pages_[free_frame_id].data_);
-  //   pages_[free_frame_id].is_dirty_ = false;
-  //   pages_[free_frame_id].pin_count_ = 1;
-  //   replacer_->RecordAccess(free_frame_id);
-  //   replacer_->SetEvictable(free_frame_id, false);
-
-  //   page_table_[page_id] = free_frame_id;
-
-  //   // // LOG_DEBUG("FetchPageWrite: Allocate the page id %d in frame id %d", page_id, free_frame_id);
-  //   PrintFrames();
-
-  //   lock.unlock();
-  //   pages_[free_frame_id].WLatch();  // latch_ 解锁之后在加锁
-
-  //   return {this, &pages_[free_frame_id]};
-  // }
-
-  // // // LOG_DEBUG("FetchPageWrite: Fail to find a free frame for page id: %d", page_id);
-
-  // return {this, nullptr};
   Page *page = FetchPage(page_id);
   if (page == nullptr) {
     return {this, nullptr};
@@ -421,34 +278,6 @@ auto BufferPoolManager::FetchPageWrite(page_id_t page_id) -> WritePageGuard {
 }
 
 auto BufferPoolManager::NewPageGuarded(page_id_t *page_id) -> BasicPageGuard {
-  // std::lock_guard<std::mutex> lock(latch_);
-
-  // // if all frames are in use and not evictable
-  // if (replacer_->Size() == 0 && free_list_.empty()) {
-  //   return {this, nullptr};
-  // }
-
-  // frame_id_t free_frame_id;
-  // if (FindFreeFrame(&free_frame_id)) {
-  //   page_id_t new_page_id = AllocatePage();
-  //   pages_[free_frame_id].page_id_ = new_page_id;
-  //   pages_[free_frame_id].is_dirty_ = false;
-  //   pages_[free_frame_id].pin_count_ = 1;
-  //   pages_[free_frame_id].ResetMemory();
-  //   *page_id = new_page_id;
-
-  //   page_table_[new_page_id] = free_frame_id;
-
-  //   replacer_->RecordAccess(free_frame_id);
-  //   replacer_->SetEvictable(free_frame_id, false);
-
-  //   // // LOG_DEBUG("NewPageGuarded: allocate page_id %d in frame_id %d", *page_id, free_frame_id);
-
-  //   return {this, &pages_[free_frame_id]};
-  // }
-
-  // return {this, nullptr};
-
   return BasicPageGuard{this, NewPage(page_id)};
 }
 
