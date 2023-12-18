@@ -169,7 +169,6 @@ auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transact
   ValueType tmp_value;
   if (leaf_page->FindValue(key, tmp_value, comparator_)) {
     LOG_DEBUG("x Insert | find duplicate key %s", std::to_string(key.ToString()).c_str());
-    // PrintPage(guard, true);
 
     ctx.write_set_.clear();
     ctx.header_page_ = std::nullopt;
@@ -192,19 +191,14 @@ auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transact
 
   int min_size = leaf_page->GetMinSize();
   int cur_size = leaf_page->GetSize();
-
-  // 需不需要考虑 max_size_ = 1 的情况呢???
-
-  bool res = true;
+  
   // take care of the corner case of max_size_ = 2
   KeyType min_idx_key = (min_size == cur_size) ? leaf_page->KeyAt(0) : leaf_page->KeyAt(min_size);
   if (comparator_(key, min_idx_key) == 0) {
     return false;
   }
 
-  // bool is_first_case = comparator_(key, min_idx_key) > 0;
-  // bool is_second_case = comparator_(key, min_idx_key) < 0 && comparator_(key, leaf_page->KeyAt(min_size - 1)) > 0;
-  // ((min_size == cur_size) && comparator_(key, min_idx_key) > 0) ||
+  bool res = true;
   if (comparator_(key, min_idx_key) > 0 ||
       (comparator_(key, min_idx_key) < 0 && comparator_(key, leaf_page->KeyAt(min_size - 1)) > 0)) {
     // 分裂后将 key 插入右边节点
@@ -254,81 +248,6 @@ auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transact
   // std::cout << "++++++++++++++++++++++++\n" << std::endl;
 
   return res;
-
-  // // 插入后叶子节点已满, 需要分裂节点
-  // // LOG_DEBUG("Testing for insert | key: %s, current_leaf_page_size: %d; max_leaf_page_size: %d",
-  // //           std::to_string(key.ToString()).c_str(), leaf_page->GetSize(), leaf_max_size_);
-  // if (leaf_page->Insert(key, value, comparator_)) {
-  //   int min_size = leaf_page->GetMinSize();
-  //   int cur_size = leaf_page->GetSize();
-
-  //   // LOG_DEBUG("\n Leaf page before Insertion: ");
-  //   // PrintPage(ctx.write_set_.back(), true);
-
-  //   page_id_t new_page_id;
-  //   BasicPageGuard new_page_guard = bpm_->NewPageGuarded(&new_page_id);
-  //   auto new_page = new_page_guard.AsMut<LeafPage>();
-  //   new_page->Init(parent_page_id, leaf_max_size_);
-  //   new_page_guard.Drop();
-
-  //   // BasicPageGuard -> WritePageGuard
-  //   WritePageGuard new_guard = bpm_->FetchPageWrite(new_page_id);
-  //   new_page = new_guard.AsMut<LeafPage>();
-
-  //   // split the current leaf page
-  //   new_page->CopyHalfFrom(leaf_page->GetData(), min_size, cur_size);
-  //   KeyType pushed_key = leaf_page->KeyAt(min_size);
-
-  //   new_page->SetSize(cur_size - min_size);
-  //   leaf_page->SetSize(min_size);
-  //   new_page->SetNextPage(leaf_page->GetNextPageId());
-  //   leaf_page->SetNextPage(new_page_id);
-
-  //   // LOG_DEBUG("Create a new leaf node %d with content %s", new_page_id, new_page->ToString().c_str());
-
-  //   // LOG_DEBUG("Split the node: current leaf page id: %d; new leaf page id: %d; pushed key: %s", guard.PageId(),
-  //   //           new_page_id, std::to_string(pushed_key.ToString()).c_str());
-
-  //   // // LOG_DEBUG("\n Leaf page after Insertion: ");
-  //   // // LOG_DEBUG("\n cur leaf page: min_size %d, cur_size %d, max_size %d", leaf_page->GetMinSize(),
-  //   // leaf_page->GetSize(),
-  //   //           leaf_page->GetMaxSize());
-  //   // PrintPage(ctx.write_set_.back(), true);
-  //   // // LOG_DEBUG("\n new leaf page: min_size %d, cur_size %d, max_size %d", new_page->GetMinSize(),
-  //   // new_page->GetSize(),
-  //   //           new_page->GetMaxSize());
-  //   // PrintPage(new_guard, true);
-
-  //   // LOG_DEBUG("B+ Tree Insert key %s: leaf node split, create a new sibling node and pass it to
-  //   // InsertInParent()", std::to_string(key.ToString()).c_str());
-
-  //   // insert into parent page
-  //   InsertInParent(pushed_key, std::move(new_guard), ctx);
-
-  //   // drop the header page guard when you want to unlock all
-  //   ctx.write_set_.clear();
-  //   ctx.header_page_ = std::nullopt;
-
-  //   // std::cout << "\n++++++++++++++++++++++++" << std::endl;
-  //   // Print(bpm_);
-  //   // std::cout << "++++++++++++++++++++++++\n" << std::endl;
-
-  //   // LOG_DEBUG("Insert | √ <key, value> {%s, <%s>}", std::to_string(key.ToString()).c_str(),
-  //   //           value.ToString().c_str());
-
-  //   LOG_DEBUG("√ Insert (with split) | key %s", std::to_string(key.ToString()).c_str());
-
-  //   return true;
-  // }
-
-  // // drop the header page guard when you want to unlock all
-  // ctx.write_set_.clear();
-  // // ctx.header_page_.value().Drop();
-  // ctx.header_page_ = std::nullopt;
-
-  // LOG_DEBUG("x Insert (fail to insert) | key %s", std::to_string(key.ToString()).c_str());
-
-  // return false;
 }
 
 /**
@@ -761,8 +680,6 @@ auto BPLUSTREE_TYPE::Begin() -> INDEXITERATOR_TYPE {
 
   const auto *leaf_page = guard.As<LeafPage>();
   MappingType entry = MappingType(leaf_page->KeyAt(0), leaf_page->ValueAt(0));
-
-  // LOG_DEBUG("Begin() | {%s, <%s>}", std::to_string(entry.first.ToString()).c_str(), entry.second.ToString().c_str());
 
   return INDEXITERATOR_TYPE(bpm_, guard.PageId(), 0, entry);
 }

@@ -60,27 +60,20 @@ auto INDEXITERATOR_TYPE::operator++() -> INDEXITERATOR_TYPE & {
   // 下一个 iterator 在当前页节点中
   if (index_ < cur_page->GetSize() - 1) {
     ++index_;
-    // LOG_DEBUG("Before ++iterator: {%s, <%s>}", std::to_string(entry_.first.ToString()).c_str(),
-    // entry_.second.ToString().c_str());
     entry_.first = cur_page->KeyAt(index_);
     entry_.second = cur_page->ValueAt(index_);
-    // LOG_DEBUG("After ++iterator: {%s, <%s>}", std::to_string(entry_.first.ToString()).c_str(),
-    // entry_.second.ToString().c_str());
     return *this;
   }
 
   // 下一个 iterator 在下一个页节点中
   page_id_t next_page_id = cur_page->GetNextPageId();
-  ReadPageGuard next_guard = bpm_->FetchPageRead(next_page_id);  // 这里应该怎么抛出异常呀???
+  ReadPageGuard next_guard = bpm_->FetchPageRead(next_page_id);
   auto next_page = next_guard.As<LeafPage>();
 
   index_ = 0;
   entry_.first = next_page->KeyAt(index_);
   entry_.second = next_page->ValueAt(index_);
   cur_page_id_ = next_page_id;
-
-  //   LOG_DEBUG("after iterator++ | {%s, <%s>}", std::to_string(entry_.first.ToString()).c_str(),
-  //             entry_.second.ToString().c_str());
 
   return *this;
 }
