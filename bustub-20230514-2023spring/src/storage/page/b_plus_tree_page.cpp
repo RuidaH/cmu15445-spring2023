@@ -46,12 +46,12 @@ auto BPlusTreePage::GetMinSize() const -> int {
 }
 
 // insert: true; delete: false;
-auto BPlusTreePage::IsSafe(bool is_insert) const -> bool {
+auto BPlusTreePage::IsSafe(OperationType op_type) const -> bool {
   if (page_type_ == IndexPageType::INTERNAL_PAGE) {
-    return is_insert ? GetSize() < GetMaxSize() : GetSize() > GetMinSize();
+    return op_type == OperationType::INSERT ? GetSize() < GetMaxSize() : GetSize() > GetMinSize();
   }
   // page_type_ == IndexPageType::LEAF_PAGE
-  return is_insert ? GetSize() < GetMaxSize() - 1 : GetSize() > GetMinSize();
+  return op_type == OperationType::INSERT ? GetSize() < GetMaxSize() - 1 : GetSize() > GetMinSize();
 }
 
 }  // namespace bustub

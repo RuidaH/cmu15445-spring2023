@@ -33,6 +33,24 @@ BPLUSTREE_TYPE::BPlusTree(std::string name, page_id_t header_page_id, BufferPool
  */
 INDEX_TEMPLATE_ARGUMENTS
 auto BPLUSTREE_TYPE::IsEmpty() const -> bool { return true; }
+
+INDEX_TEMPLATE_ARGUMENTS
+void BPLUSTREE_TYPE::FindLeafPage(Context &ctx, const KeyType &key, ValueType &value, OperationType op_type, bool is_first_time, Transaction *txn) {
+  // ReadPageGuard guard = bpm_->FetchPageRead(header_page->root_page_id_);
+  // auto page = guard.As<BPlusTreePage>();
+
+  // const InternalPage *internal_page = nullptr;
+  // while (!page->IsLeafPage()) {
+  //   internal_page = guard.As<InternalPage>();
+  //   guard = bpm_->FetchPageRead(internal_page->FindValue(key, comparator_));
+  //   page = guard.As<BPlusTreePage>();
+  // }
+
+  // // 将叶子节点加入 ctx 用于返回
+  // ctx.read_set_.emplace_back(std::move(guard));
+  return;
+}
+
 /*****************************************************************************
  * SEARCH
  *****************************************************************************/
@@ -43,8 +61,6 @@ auto BPLUSTREE_TYPE::IsEmpty() const -> bool { return true; }
  */
 INDEX_TEMPLATE_ARGUMENTS
 auto BPLUSTREE_TYPE::GetValue(const KeyType &key, std::vector<ValueType> *result, Transaction *txn) -> bool {
-  // // LOG_DEBUG("GetValue | key {%s}", std::to_string(key.ToString()).c_str());
-
   ReadPageGuard header_guard = bpm_->FetchPageRead(header_page_id_);
   auto header_page = header_guard.As<BPlusTreeHeaderPage>();
   if (header_page->root_page_id_ == INVALID_PAGE_ID) {  // b+ tree is empty
@@ -57,10 +73,6 @@ auto BPLUSTREE_TYPE::GetValue(const KeyType &key, std::vector<ValueType> *result
   const InternalPage *internal_page = nullptr;
   while (!page->IsLeafPage()) {
     internal_page = guard.As<InternalPage>();
-
-    // std::cout << "#### Find the internal page (page id " << guard.PageId() << ")" << std::endl;
-    // PrintPage(guard, internal_page->IsLeafPage());
-
     guard = bpm_->FetchPageRead(internal_page->FindValue(key, comparator_));
     page = guard.As<BPlusTreePage>();
   }
@@ -71,12 +83,9 @@ auto BPLUSTREE_TYPE::GetValue(const KeyType &key, std::vector<ValueType> *result
   const auto *leaf_page = guard.As<LeafPage>();
   ValueType res;
   if (leaf_page->FindValue(key, res, comparator_)) {
-    // // LOG_DEBUG("GetValue | √ key %s", std::to_string(key.ToString()).c_str());
     result->push_back(res);
     return true;
   }
-
-  // LOG_DEBUG("GetValue | x key %s", std::to_string(key.ToString()).c_str());
 
   return false;
 }
@@ -97,8 +106,8 @@ auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transact
   Context ctx;
   (void)ctx;
 
-  // // LOG_DEBUG("Insert | <key, value> {%s, <%s>}", std::to_string(key.ToString()).c_str(), value.ToString().c_str());
-  // // LOG_DEBUG("Insert | key %s", std::to_string(key.ToString()).c_str());
+  // LOG_DEBUG("Insert | <key, value> {%s, <%s>}", std::to_string(key.ToString()).c_str(), value.ToString().c_str());
+  // LOG_DEBUG("Insert | key %s", std::to_string(key.ToString()).c_str());
 
   ctx.header_page_ = bpm_->FetchPageWrite(header_page_id_);
   auto header_page = ctx.header_page_.value().AsMut<BPlusTreeHeaderPage>();
@@ -106,16 +115,13 @@ auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transact
 
   // tree is empty
   if (header_page->root_page_id_ == INVALID_PAGE_ID) {
-    // LOG_DEBUG("Insert | key %s", std::to_string(key.ToString()).c_str());
-
     BasicPageGuard root_page_guard = bpm_->NewPageGuarded(&header_page->root_page_id_);
-    ctx.root_page_id_ = root_page_guard.PageId();
     auto page = root_page_guard.AsMut<LeafPage>();
     page->Init(INVALID_PAGE_ID, leaf_max_size_);
     root_page_guard.Drop();
 
     WritePageGuard root_page_write_guard = bpm_->FetchPageWrite(header_page->root_page_id_);
-    page = root_page_write_guard.AsMut<LeafPage>();  // set is_dirty_ = true;
+    page = root_page_write_guard.AsMut<LeafPage>();
     page->Insert(key, value, comparator_);
 
     return true;
@@ -130,23 +136,17 @@ auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transact
   auto page = guard.AsMut<BPlusTreePage>();
   InternalPage *internal_page = nullptr;
   page_id_t parent_page_id = INVALID_PAGE_ID;
-  bool is_insert = true;
   while (!page->IsLeafPage()) {
-    // // LOG_DEBUG("Current page id: %d (leaf page: %d)", guard.PageId(), page->IsLeafPage());
     internal_page = guard.AsMut<InternalPage>();
     parent_page_id = guard.PageId();
 
     // latch crabbing: 如果子节点安全的话, 就可以释放所有祖先的锁了
-    if (internal_page->IsSafe(is_insert)) {
+    if (internal_page->IsSafe(OperationType::INSERT)) {
       ctx.write_set_.clear();
     }
     ctx.write_set_.emplace_back(std::move(guard));
 
     page_id_t tmp = internal_page->FindValue(key, comparator_);
-
-    // // LOG_DEBUG("Find the next page id: %d, with internal page content: \n %s", tmp,
-    // internal_page->ToString().c_str());
-
     guard = bpm_->FetchPageWrite(tmp);
     page = guard.AsMut<BPlusTreePage>();
   }
@@ -159,18 +159,12 @@ auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transact
   if (leaf_page->GetSize() < leaf_page->GetMaxSize() - 1) {
     bool res = leaf_page->Insert(key, value, comparator_);
     ctx.write_set_.clear();
-
-    if (res) {
-      // LOG_DEBUG("√ Insert (no split) | key %s", std::to_string(key.ToString()).c_str());
-    }
-
     return res;
   }
 
   // 找到 duplicate key, 直接退出
   ValueType temp_value;
   if (leaf_page->FindValue(key, temp_value, comparator_)) {
-    // LOG_DEBUG("x Insert | find duplicate key %s", std::to_string(key.ToString()).c_str());
     ctx.write_set_.clear();
     return false;
   }
@@ -406,12 +400,11 @@ void BPLUSTREE_TYPE::Remove(const KeyType &key, Transaction *txn) {
   auto page = guard.AsMut<BPlusTreePage>();
   InternalPage *internal_page = nullptr;
   std::unordered_map<page_id_t, int> page_id_to_index;
-  bool is_insert = false;
   while (!page->IsLeafPage()) {
     internal_page = guard.AsMut<InternalPage>();
 
     // latch crabbing: 如果子节点安全的话, 就可以释放所有祖先的锁了
-    if (internal_page->IsSafe(is_insert)) {
+    if (internal_page->IsSafe(OperationType::DELETE)) {
       ctx.write_set_.clear();
     }
     ctx.write_set_.emplace_back(std::move(guard));

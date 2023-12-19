@@ -27,6 +27,9 @@ namespace bustub {
 // define page type enum
 enum class IndexPageType { INVALID_INDEX_PAGE = 0, LEAF_PAGE, INTERNAL_PAGE };
 
+// define operation type enum
+enum class OperationType { FIND = 0, INSERT, DELETE };
+
 /**
  * Both internal and leaf page are inherited from this page.
  *
@@ -56,7 +59,7 @@ class BPlusTreePage {
   void SetMaxSize(int max_size);
   auto GetMinSize() const -> int;
 
-  auto IsSafe(bool is_insert) const -> bool;
+  auto IsSafe(OperationType op_type) const -> bool;
 
  private:
   // member variable, attributes that both internal and leaf page share
