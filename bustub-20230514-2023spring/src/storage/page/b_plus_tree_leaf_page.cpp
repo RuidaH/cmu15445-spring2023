@@ -102,31 +102,16 @@ auto B_PLUS_TREE_LEAF_PAGE_TYPE::Insert(const KeyType &key, const ValueType &val
   int size = GetSize();
   auto it = std::lower_bound(array_, array_ + size, key, compare_first);
   if (it < array_ + size && comparator(key, it->first) == 0) {  // find the duplicate key
-    LOG_DEBUG("Leaf insert | find the duplicate key %s/%s at index %td", std::to_string(key.ToString()).c_str(),
-              std::to_string(it->first.ToString()).c_str(), std::distance(array_, it));
+    // LOG_DEBUG("Leaf insert | find the duplicate key %s/%s at index %td", std::to_string(key.ToString()).c_str(),
+    //           std::to_string(it->first.ToString()).c_str(), std::distance(array_, it));
     return false;
   }
 
-  // LOG_DEBUG("Before insertion | The last entry: {%s}",
-  //           std::to_string(array_[GetMaxSize() - 1].first.ToString()).c_str());
-
   // insert new <key, value> pair
   int index = std::distance(array_, it);
-  // LOG_DEBUG("Leaf page insertion | index: %d; size: %d; size + 1: %d; with key: %s", index, size, size + 1,
-  //           std::to_string(key.ToString()).c_str());
 
   // std::copy_backward(array_ + index, array_ + size, array_ + size + 1);
   std::move_backward(array_ + index, array_ + size, array_ + size + 1);
-
-  // for (int i = GetSize() - 1; i >= index; i--) {
-  //   if (size > 252) {
-  //     LOG_DEBUG("Shifting data from i = %d to i + 1 = %d", i, i + 1);
-  //   }
-  //   array_[i + 1] = array_[i];
-  // }
-
-  // LOG_DEBUG("After insertion | The last entry: {%s}",
-  //           std::to_string(array_[GetMaxSize() - 1].first.ToString()).c_str());
 
   array_[index].first = key;
   array_[index].second = value;
@@ -184,6 +169,16 @@ void B_PLUS_TREE_LEAF_PAGE_TYPE::ShiftData(int dist) {
   }
   IncreaseSize(dist);
 }
+
+// // insert: true; delete: false
+// INDEX_TEMPLATE_ARGUMENTS
+// auto B_PLUS_TREE_LEAF_PAGE_TYPE::IsSafe(bool is_insert) -> bool {
+//   if (is_insert) {
+//     return GetSize() < GetMaxSize() - 1;
+//   } else {
+//     return GetSize() > GetMinSize();
+//   }
+// }
 
 INDEX_TEMPLATE_ARGUMENTS
 void B_PLUS_TREE_LEAF_PAGE_TYPE::SetParentPageId(page_id_t parent_page_id) { parent_page_id_ = parent_page_id; }

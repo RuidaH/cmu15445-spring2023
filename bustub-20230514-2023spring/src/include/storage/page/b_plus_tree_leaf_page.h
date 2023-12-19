@@ -74,6 +74,7 @@ class BPlusTreeLeafPage : public BPlusTreePage {
   void SetParentPageId(page_id_t parent_page_id);
   void Merge(MappingType *array, int size);
   void ShiftData(int dist);
+  // auto IsSafe(bool is_insert) -> bool;
 
   /**
    * @brief for test only return a string representing all keys in

@@ -79,12 +79,12 @@ class BPlusTreeInternalPage : public BPlusTreePage {
   void SetKeyValueAt(int index, const KeyType &key, const ValueType &value);
   void SetValueAt(int index, const ValueType &value);
   void CopyHalfFrom(MappingType *array, int min_size, int size);
-  void EraseHalf();
   auto GetData() -> MappingType *;
   auto GetParentPageId() -> page_id_t;
   void SetParentPageId(page_id_t parent_page_id);
   void Merge(MappingType *array, int size);
   void ShiftData(int dist);
+  // auto IsSafe(bool is_insert) -> bool;
 
   /**
    * @brief For test only, return a string representing all keys in

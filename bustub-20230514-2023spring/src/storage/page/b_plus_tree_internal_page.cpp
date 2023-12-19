@@ -118,7 +118,6 @@ auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::Insert(const KeyType &key, const ValueType 
     IncreaseSize(1);
     array_[0].first = key;
     array_[0].second = value;
-    // LOG_DEBUG("---- Internal page size (after insertion): %d", GetSize());
     return true;
   }
 
@@ -173,6 +172,16 @@ void B_PLUS_TREE_INTERNAL_PAGE_TYPE::ShiftData(int dist) {
   IncreaseSize(dist);
 }
 
+// // insert: true; delete: false
+// INDEX_TEMPLATE_ARGUMENTS
+// auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::IsSafe(bool is_insert) -> bool {
+//   if (is_insert) {
+//     return GetSize() < GetMaxSize();
+//   } else {
+//     return GetSize() > GetMinSize();
+//   }
+// }
+
 INDEX_TEMPLATE_ARGUMENTS
 void B_PLUS_TREE_INTERNAL_PAGE_TYPE::SetParentPageId(page_id_t parent_page_id) { parent_page_id_ = parent_page_id; }
 
@@ -186,13 +195,6 @@ void B_PLUS_TREE_INTERNAL_PAGE_TYPE::CopyHalfFrom(MappingType *array, int min_si
 
 INDEX_TEMPLATE_ARGUMENTS
 auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::GetData() -> MappingType * { return array_; }
-
-// INDEX_TEMPLATE_ARGUMENTS
-// void B_PLUS_TREE_INTERNAL_PAGE_TYPE::EraseHalf() {
-//   for (int i = GetMinSize(); i < GetSize(); ++i) {
-//     SetKeyValueAt(i, -1, -1);
-//   }
-// }
 
 // valuetype for internalNode should be page id_t
 template class BPlusTreeInternalPage<GenericKey<4>, page_id_t, GenericComparator<4>>;

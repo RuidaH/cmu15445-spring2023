@@ -45,4 +45,13 @@ auto BPlusTreePage::GetMinSize() const -> int {
   return max_size_ / 2;
 }
 
+// insert: true; delete: false;
+auto BPlusTreePage::IsSafe(bool is_insert) const -> bool {
+  if (page_type_ == IndexPageType::INTERNAL_PAGE) {
+    return is_insert ? GetSize() < GetMaxSize() : GetSize() > GetMinSize();
+  }
+  // page_type_ == IndexPageType::LEAF_PAGE
+  return is_insert ? GetSize() < GetMaxSize() - 1 : GetSize() > GetMinSize();
+}
+
 }  // namespace bustub
