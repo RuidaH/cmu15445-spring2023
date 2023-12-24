@@ -143,8 +143,8 @@ auto B_PLUS_TREE_LEAF_PAGE_TYPE::Delete(const KeyType &key, const ValueType &val
     // remove the <key, value> from the leaf node
     int dist = std::distance(array_, res);
 
-    LOG_DEBUG("Leaf page Deletion | index: %d; size: %d; size + 1: %d; with key: %s", dist, GetSize(), GetSize() - 1,
-              std::to_string(key.ToString()).c_str());
+    // LOG_DEBUG("Leaf page Deletion | index: %d; size: %d; size + 1: %d; with key: %s", dist, GetSize(), GetSize() - 1,
+    //           std::to_string(key.ToString()).c_str());
 
     std::copy(array_ + dist + 1, array_ + GetSize(), array_ + dist);
     IncreaseSize(-1);
@@ -170,16 +170,6 @@ void B_PLUS_TREE_LEAF_PAGE_TYPE::ShiftData(int dist) {
   IncreaseSize(dist);
 }
 
-// // insert: true; delete: false
-// INDEX_TEMPLATE_ARGUMENTS
-// auto B_PLUS_TREE_LEAF_PAGE_TYPE::IsSafe(bool is_insert) -> bool {
-//   if (is_insert) {
-//     return GetSize() < GetMaxSize() - 1;
-//   } else {
-//     return GetSize() > GetMinSize();
-//   }
-// }
-
 INDEX_TEMPLATE_ARGUMENTS
 void B_PLUS_TREE_LEAF_PAGE_TYPE::SetParentPageId(page_id_t parent_page_id) { parent_page_id_ = parent_page_id; }
 
@@ -199,13 +189,6 @@ void B_PLUS_TREE_LEAF_PAGE_TYPE::CopyHalfFrom(MappingType *array, int min_size, 
 
 INDEX_TEMPLATE_ARGUMENTS
 auto B_PLUS_TREE_LEAF_PAGE_TYPE::GetData() -> MappingType * { return array_; }
-
-// INDEX_TEMPLATE_ARGUMENTS
-// void B_PLUS_TREE_LEAF_PAGE_TYPE::EraseHalf() {
-//   for (int i = GetMinSize(); i < GetSize(); ++i) {
-//     SetKeyValueAt(i, -1, -1);
-//   }
-// }
 
 INDEX_TEMPLATE_ARGUMENTS
 void B_PLUS_TREE_LEAF_PAGE_TYPE::SetKeyValueAt(int index, const KeyType &key, const ValueType &value) {
