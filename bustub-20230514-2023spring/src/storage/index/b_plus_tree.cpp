@@ -62,15 +62,8 @@ auto BPLUSTREE_TYPE::FindLeafPage(Context &ctx, const KeyType &key, OperationTyp
       page = guard.As<BPlusTreePage>();
     }
 
-    // for GetValue()
+    // for find operation
     if (op_type == OperationType::FIND) {
-      LOG_DEBUG("Find the leaf page %d", guard.PageId());
-      PrintPage(guard, true);
-
-      // std::cout << "\n++++++++++++++++++++++++" << std::endl;
-      // Print(bpm_);
-      // std::cout << "++++++++++++++++++++++++\n" << std::endl;
-
       ctx.read_set_.emplace_back(std::move(guard));
       return true;
     }
@@ -87,16 +80,7 @@ auto BPLUSTREE_TYPE::FindLeafPage(Context &ctx, const KeyType &key, OperationTyp
   }
 
   // latch crabbing to find the leaf page
-  ctx.header_page_ = bpm_->FetchPageWrite(header_page_id_);
-  auto header_page = ctx.header_page_.value().AsMut<BPlusTreeHeaderPage>();
-  ctx.root_page_id_ = header_page->root_page_id_;
-
-  // 直接将 header_page_ 加入进去 write_set_ 保证 latch crabbing 逻辑的统一
-  ctx.write_set_.emplace_back(std::move(ctx.header_page_.value()));
-  ctx.header_page_ = std::nullopt;
-
-  // to find the leaf node
-  WritePageGuard guard = bpm_->FetchPageWrite(header_page->root_page_id_);
+  WritePageGuard guard = bpm_->FetchPageWrite(ctx.root_page_id_);
   auto page = guard.AsMut<BPlusTreePage>();
   InternalPage *internal_page = nullptr;
   while (!page->IsLeafPage()) {
@@ -134,7 +118,10 @@ auto BPLUSTREE_TYPE::GetValue(const KeyType &key, std::vector<ValueType> *result
 
   LOG_DEBUG("Find | key %s", std::to_string(key.ToString()).c_str());
 
-  FindLeafPage(ctx, key, OperationType::FIND, true, txn);
+  // tree is empty
+  if (!FindLeafPage(ctx, key, OperationType::FIND, true, txn)) {
+    return false;
+  }
   ReadPageGuard guard = std::move(ctx.read_set_.back());
 
   ValueType res;
@@ -162,28 +149,7 @@ auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transact
   Context ctx;
   (void)ctx;
 
-  // LOG_DEBUG("Insert | <key, value> {%s, <%s>}", std::to_string(key.ToString()).c_str(), value.ToString().c_str());
-  // LOG_DEBUG("Insert | key %s", std::to_string(key.ToString()).c_str());
-
-  // tree is empty
-  if (IsEmpty()) {
-    ctx.header_page_ = bpm_->FetchPageWrite(header_page_id_);
-    auto header_page = ctx.header_page_.value().AsMut<BPlusTreeHeaderPage>();
-
-    BasicPageGuard root_page_guard = bpm_->NewPageGuarded(&header_page->root_page_id_);
-    auto page = root_page_guard.AsMut<LeafPage>();
-    page->Init(INVALID_PAGE_ID, leaf_max_size_);
-    root_page_guard.Drop();
-
-    WritePageGuard root_page_write_guard = bpm_->FetchPageWrite(header_page->root_page_id_);
-    page = root_page_write_guard.AsMut<LeafPage>();
-    page->Insert(key, value, comparator_);
-
-    return true;
-  }
-
-  // 这里的逻辑还是有点不对呀, 前面的 header_page_ 应该也是用的 read_guard
-  // 找到的 leaf page 是安全的, 直接插入并且返回
+  // 乐观查找: 找到的 leaf page 是安全的, 直接插入并且返回
   bool is_first_time = true;
   if (FindLeafPage(ctx, key, OperationType::INSERT, is_first_time, txn)) {
     WritePageGuard guard = std::move(ctx.write_set_.back());
@@ -193,40 +159,43 @@ auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transact
     return res;
   }
 
-  // ctx.header_page_ = bpm_->FetchPageWrite(header_page_id_);
-  // auto header_page = ctx.header_page_.value().AsMut<BPlusTreeHeaderPage>();
-  // ctx.root_page_id_ = header_page->root_page_id_;
+  // 乐观查找失败: 需要重新去锁上 header_page_
+  // 现在的问题是两个线程都进入 if 的条件判断语句, 这样子会重复创建根节点
+  // 解决办法: 在进入 if 逻辑之前对 header_page_ 加锁
 
-  // // 直接将 header_page_ 加入进去 write_set_ 保证 latch crabbing 逻辑的统一
-  // ctx.write_set_.emplace_back(std::move(ctx.header_page_.value()));
-  // ctx.header_page_ = std::nullopt;
+  ctx.header_page_ = bpm_->FetchPageWrite(header_page_id_);
+  auto header_page = ctx.header_page_.value().AsMut<BPlusTreeHeaderPage>();
+  ctx.root_page_id_ = header_page->root_page_id_;
 
-  // // to find the leaf node
-  // WritePageGuard guard = bpm_->FetchPageWrite(header_page->root_page_id_);
-  // auto page = guard.AsMut<BPlusTreePage>();
-  // InternalPage *internal_page = nullptr;
-  // while (!page->IsLeafPage()) {
-  //   internal_page = guard.AsMut<InternalPage>();
+  // tree is empty
+  if (ctx.root_page_id_ == INVALID_PAGE_ID) {
+    BasicPageGuard root_page_guard = bpm_->NewPageGuarded(&header_page->root_page_id_);
+    // ctx.root_page_id_ = header_page->root_page_id_;
+    auto page = root_page_guard.AsMut<LeafPage>();
+    page->Init(INVALID_PAGE_ID, leaf_max_size_);
+    root_page_guard.Drop();
 
-  //   // latch crabbing: 如果子节点安全的话, 就可以释放所有祖先的锁了
-  //   if (internal_page->IsSafe(OperationType::INSERT)) {
-  //     ctx.write_set_.clear();
-  //   }
-  //   ctx.write_set_.emplace_back(std::move(guard));
+    WritePageGuard root_page_write_guard = bpm_->FetchPageWrite(header_page->root_page_id_);
+    page = root_page_write_guard.AsMut<LeafPage>();
+    page->Insert(key, value, comparator_);
 
-  //   page_id_t tmp = internal_page->FindValue(key, comparator_);
-  //   guard = bpm_->FetchPageWrite(tmp);
-  //   page = guard.AsMut<BPlusTreePage>();
-  // }
+    ctx.header_page_ = std::nullopt;
+
+    LOG_DEBUG("Create the new root node %d", header_page->root_page_id_);
+
+    return true;
+  }
+
+  // 直接将 header_page_ 加入进去 write_set_ 保证 latch crabbing 逻辑的统一
+  ctx.write_set_.emplace_back(std::move(ctx.header_page_.value()));
+  ctx.header_page_ = std::nullopt;
 
   // LOG_DEBUG("Insert | key %s", std::to_string(key.ToString()).c_str());
 
-  is_first_time = false;
   ctx.read_set_.clear();
+  is_first_time = false;
   FindLeafPage(ctx, key, OperationType::INSERT, is_first_time, txn);
   auto leaf_page = ctx.write_set_.back().AsMut<LeafPage>();
-
-  // auto leaf_page = guard.AsMut<LeafPage>();
 
   // leaf page will not be full after insertion (leaf page is safe), just insert and return
   if (leaf_page->GetSize() < leaf_page->GetMaxSize() - 1) {
@@ -365,9 +334,6 @@ void BPLUSTREE_TYPE::InsertInParent(const KeyType &key, WritePageGuard &&new_pag
     return;
   }
 
-  // 当前 header_page_ 会作为 write_set_ 的第一个节点, 所以后面的逻辑都需要重新整理
-  // 前面的写法应该都统一一下, 现在写的太乱了
-
   // 此时最后一个节点和 new_page_guard 是同一层的, 需要先弹出来, 找出父节点
   ctx.write_set_.pop_back();
   WritePageGuard &cur_page_guard = ctx.write_set_.back();
@@ -459,6 +425,16 @@ void BPLUSTREE_TYPE::Remove(const KeyType &key, Transaction *txn) {
   Context ctx;
   (void)ctx;
 
+  // // 乐观查找: 找到的 leaf page 是安全的, 直接删除并且返回
+  // bool is_first_time = true;
+  // if (FindLeafPage(ctx, key, OperationType::INSERT, is_first_time, txn)) {
+  //   WritePageGuard guard = std::move(ctx.write_set_.back());
+  //   auto leaf_page = guard.AsMut<LeafPage>();
+  //   bool res = leaf_page->Insert(key, value, comparator_);
+  //   ctx.write_set_.clear();
+  //   return res;
+  // }
+
   ctx.header_page_ = bpm_->FetchPageWrite(header_page_id_);
   auto header_page = ctx.header_page_.value().AsMut<BPlusTreeHeaderPage>();
   ctx.root_page_id_ = header_page->root_page_id_;
@@ -493,12 +469,11 @@ void BPLUSTREE_TYPE::Remove(const KeyType &key, Transaction *txn) {
     page = guard.AsMut<BPlusTreePage>();
   }
 
-  LOG_DEBUG("Remove | remove the key %s", std::to_string(key.ToString()).c_str());
+  // LOG_DEBUG("Remove | remove the key %s", std::to_string(key.ToString()).c_str());
 
   auto leaf_page = guard.AsMut<LeafPage>();
   ValueType res;
   if (!leaf_page->FindValue(key, res, comparator_)) {  // 叶子节点找不到对应的 key 值, 直接返回
-    // // LOG_DEBUG("√ Remove | cannot find the key %s", std::to_string(key.ToString()).c_str());
     ctx.write_set_.clear();
     return;
   }
@@ -506,8 +481,6 @@ void BPLUSTREE_TYPE::Remove(const KeyType &key, Transaction *txn) {
   // 调用递归函数
   ctx.write_set_.emplace_back(std::move(guard));
   DeleteEntry(ctx, key, res, page_id_to_index);
-
-  // // LOG_DEBUG("√ Remove | remove the key %s", std::to_string(key.ToString()).c_str());
 
   // drop the header page guard when you want to unlock all
   ctx.write_set_.clear();
