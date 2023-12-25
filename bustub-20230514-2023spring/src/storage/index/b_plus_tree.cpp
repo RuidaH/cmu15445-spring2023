@@ -132,10 +132,10 @@ auto BPLUSTREE_TYPE::GetValue(const KeyType &key, std::vector<ValueType> *result
   }
   ReadPageGuard guard = std::move(ctx.read_set_.back());
 
-  ValueType res;
+  ValueType leaf_value;
   const auto *leaf_page = guard.As<LeafPage>();
-  if (leaf_page->FindValue(key, res, comparator_)) {
-    result->push_back(res);
+  if (leaf_page->FindValue(key, leaf_value, comparator_)) {
+    result->push_back(leaf_value);
     return true;
   }
 
