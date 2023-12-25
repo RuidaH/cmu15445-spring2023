@@ -75,7 +75,6 @@ class BPlusTreeInternalPage : public BPlusTreePage {
 
   auto FindValue(KeyType key, const KeyComparator &comparator, int *child_page_index = nullptr) const -> ValueType;
   auto Insert(const KeyType &key, const ValueType &value, const KeyComparator &comparator) -> bool;
-  auto Delete(const KeyType &key, const ValueType &value, const KeyComparator &comparator) -> bool;
   auto Delete(const KeyType &key, const KeyComparator &comparator) -> bool;
   void SetKeyValueAt(int index, const KeyType &key, const ValueType &value);
   void SetValueAt(int index, const ValueType &value);
@@ -85,7 +84,6 @@ class BPlusTreeInternalPage : public BPlusTreePage {
   void SetParentPageId(page_id_t parent_page_id);
   void Merge(MappingType *array, int size);
   void ShiftData(int dist);
-  // auto IsSafe(bool is_insert) -> bool;
 
   /**
    * @brief For test only, return a string representing all keys in

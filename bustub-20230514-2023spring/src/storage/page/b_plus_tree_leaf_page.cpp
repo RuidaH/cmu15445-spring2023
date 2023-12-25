@@ -28,7 +28,6 @@ namespace bustub {
  */
 INDEX_TEMPLATE_ARGUMENTS
 void B_PLUS_TREE_LEAF_PAGE_TYPE::Init(page_id_t parent_page_id, int max_size) {
-  // LOG_DEBUG("Leaf page size = %d", max_size);
   SetMaxSize(max_size);  // leaf page size = 255
   SetSize(0);
   SetPageType(IndexPageType::LEAF_PAGE);
@@ -71,8 +70,6 @@ auto B_PLUS_TREE_LEAF_PAGE_TYPE::FindValue(const KeyType &key, ValueType &value,
     return comparator(lhs.first, rhs) < 0;
   };
 
-  // 这里 - 1 是因为如果 key 的值比 array_ 中的所有值都大, 我要他返回 array_ 最后一个值
-  // 如果这里不 - 1 的话, 那么最后返回的 res 会在 array_ 外面一位
   auto res = std::lower_bound(array_, array_ + GetSize() - 1, key, compare_first);
   if (comparator(key, res->first) == 0) {
     value = res->second;
@@ -102,56 +99,18 @@ auto B_PLUS_TREE_LEAF_PAGE_TYPE::Insert(const KeyType &key, const ValueType &val
   int size = GetSize();
   auto it = std::lower_bound(array_, array_ + size, key, compare_first);
   if (it < array_ + size && comparator(key, it->first) == 0) {  // find the duplicate key
-    // LOG_DEBUG("Leaf insert | find the duplicate key %s/%s at index %td", std::to_string(key.ToString()).c_str(),
-    //           std::to_string(it->first.ToString()).c_str(), std::distance(array_, it));
     return false;
   }
 
-  // insert new <key, value> pair
+  // insert <key, value>
   int index = std::distance(array_, it);
-
-  LOG_DEBUG("(key: %s) Leaf page Insertion | index: %d; size: %d; size + 1: %d; with key: %s",
-            std::to_string(key.ToString()).c_str(), index, GetSize(), GetSize() + 1,
-            std::to_string(key.ToString()).c_str());
-
-  // std::copy_backward(array_ + index, array_ + size, array_ + size + 1);
   std::move_backward(array_ + index, array_ + size, array_ + size + 1);
 
   array_[index].first = key;
   array_[index].second = value;
   IncreaseSize(1);
 
-  std::string str;
-  for (int i = 0; i < GetSize(); ++i) {
-    str += ("[" + std::to_string(array_[i].first.ToString()) + "] ");
-  }
-
-  // LOG_DEBUG("Leaf insert | content after insertion with size %d: %s", GetSize(), str.c_str());
-
   return true;
-}
-
-INDEX_TEMPLATE_ARGUMENTS
-auto B_PLUS_TREE_LEAF_PAGE_TYPE::Delete(const KeyType &key, const ValueType &value, const KeyComparator &comparator)
-    -> bool {
-  if (GetSize() == 0) {
-    return false;
-  }
-
-  auto compare_first = [comparator](const MappingType &lhs, KeyType rhs) -> bool {
-    return comparator(lhs.first, rhs) < 0;
-  };
-
-  auto res = std::lower_bound(array_, array_ + GetSize() - 1, key, compare_first);
-  if (comparator(key, res->first) == 0 && value == res->second) {
-    // remove the <key, value> from the leaf node
-    int dist = std::distance(array_, res);
-    std::copy(array_ + dist + 1, array_ + GetSize(), array_ + dist);
-    IncreaseSize(-1);
-    return true;
-  }
-
-  return false;
 }
 
 INDEX_TEMPLATE_ARGUMENTS
@@ -166,7 +125,7 @@ auto B_PLUS_TREE_LEAF_PAGE_TYPE::Delete(const KeyType &key, const KeyComparator 
 
   auto res = std::lower_bound(array_, array_ + GetSize() - 1, key, compare_first);
   if (comparator(key, res->first) == 0) {
-    // remove the <key, value> from the leaf node
+    // remove <key, value>
     int dist = std::distance(array_, res);
     std::copy(array_ + dist + 1, array_ + GetSize(), array_ + dist);
     IncreaseSize(-1);
@@ -199,7 +158,7 @@ INDEX_TEMPLATE_ARGUMENTS
 auto B_PLUS_TREE_LEAF_PAGE_TYPE::GetParentPageId() -> page_id_t { return parent_page_id_; }
 
 INDEX_TEMPLATE_ARGUMENTS
-void B_PLUS_TREE_LEAF_PAGE_TYPE::SetNextPage(page_id_t page_id) { next_page_id_ = page_id; }
+void B_PLUS_TREE_LEAF_PAGE_TYPE::SetNextPageId(page_id_t page_id) { next_page_id_ = page_id; }
 
 INDEX_TEMPLATE_ARGUMENTS
 auto B_PLUS_TREE_LEAF_PAGE_TYPE::GetNextPageId() -> page_id_t { return next_page_id_; }

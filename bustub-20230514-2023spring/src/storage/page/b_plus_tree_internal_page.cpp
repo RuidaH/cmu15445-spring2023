@@ -82,16 +82,11 @@ auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::FindValue(KeyType key, const KeyComparator 
 
   auto res = std::lower_bound(array_, array_ + GetSize(), key, compare_first);
   res = std::prev(res);
-  // res = (res == array_ + GetSize()) ? std::prev(res) : res;
 
   // 记录一下孩子节点的索引下标, 用于删除
   if (child_page_index != nullptr) {
     *child_page_index = std::distance(array_, res);
   }
-
-  // LOG_DEBUG("Internal page: %s", ToString().c_str());
-  // LOG_DEBUG("Internal page findValue() result: <%s, %s>", std::to_string(res->first.ToString()).c_str(),
-  //           std::to_string(res->second).c_str());
 
   return res->second;
 }
@@ -99,18 +94,7 @@ auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::FindValue(KeyType key, const KeyComparator 
 INDEX_TEMPLATE_ARGUMENTS
 auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::Insert(const KeyType &key, const ValueType &value, const KeyComparator &comparator)
     -> bool {
-  // LOG_DEBUG("---- Internal page size (before insertion): %d", GetSize());
-
   int size = GetSize();
-
-  // 好离谱的错误
-  // if (comparator(key, array_[size - 1].first) > 0) {
-  //   array_[size].first = key;
-  //   array_[size].second = value;
-  //   IncreaseSize(1);
-  //   // LOG_DEBUG("---- Internal page size (after insertion): %d", GetSize());
-  //   return true;
-  // }
 
   // insert 的特殊情况: 中间节点 pushed_key 是有可能作为新节点的第一位的
   if (comparator(key, array_[0].first) < 0) {
@@ -127,33 +111,13 @@ auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::Insert(const KeyType &key, const ValueType 
 
   auto it = std::lower_bound(array_ + 1, array_ + size, key, compare_first);  // don't insert into index 0
 
-  // insert new <key, value> pair
+  // insert <key, value>
   int index = std::distance(array_, it);
   std::move_backward(array_ + index, array_ + size, array_ + size + 1);
   IncreaseSize(1);
   array_[index] = std::make_pair(key, value);
 
-  // LOG_DEBUG("Internal page insertion: distance %d", index);
-
   return true;
-}
-
-INDEX_TEMPLATE_ARGUMENTS
-auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::Delete(const KeyType &key, const ValueType &value, const KeyComparator &comparator)
-    -> bool {
-  auto compare_first = [comparator](const MappingType &lhs, KeyType rhs) -> bool {
-    return comparator(lhs.first, rhs) < 0;
-  };
-
-  auto res = std::lower_bound(array_, array_ + GetSize() - 1, key, compare_first);
-  if (comparator(key, res->first) == 0 && value == res->second) {
-    int dist = std::distance(array_, res);
-    std::copy(array_ + dist + 1, array_ + GetSize(), array_ + dist);
-    IncreaseSize(-1);
-    return true;
-  }
-
-  return false;
 }
 
 INDEX_TEMPLATE_ARGUMENTS
