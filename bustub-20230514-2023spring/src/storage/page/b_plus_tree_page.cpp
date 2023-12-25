@@ -51,8 +51,7 @@ auto BPlusTreePage::IsSafe(OperationType op_type) const -> bool {
     return op_type == OperationType::INSERT ? GetSize() < GetMaxSize() : GetSize() > GetMinSize();
   }
   // page_type_ == IndexPageType::LEAF_PAGE
-  // return op_type == OperationType::INSERT ? GetSize() < GetMaxSize() - 1 : GetSize() > GetMinSize();
-  return op_type == OperationType::INSERT ? GetSize() < GetMaxSize() - 2 : GetSize() > GetMinSize();
+  return op_type == OperationType::INSERT ? GetSize() < GetMaxSize() - 1 : GetSize() > GetMinSize();
 }
 
 }  // namespace bustub

@@ -71,13 +71,18 @@ auto BPLUSTREE_TYPE::FindLeafPage(Context &ctx, const KeyType &key, OperationTyp
 
     // for insert/remove operation
     auto leaf_page = guard.As<LeafPage>();
-    if (leaf_page->IsSafe(op_type)) {
-      guard.Drop();
-      ctx.write_set_.emplace_back(bpm_->FetchPageWrite(tmp_page_id));
-      return true;
-    }
+    guard.Drop();
+    ctx.write_set_.emplace_back(bpm_->FetchPageWrite(tmp_page_id));
 
-    return false;
+    return true;
+
+    // if (leaf_page->IsSafe(op_type)) {
+    //   guard.Drop();
+    //   ctx.write_set_.emplace_back(bpm_->FetchPageWrite(tmp_page_id));
+    //   return true;
+    // }
+
+    // return false;
   }
 
   // latch crabbing to find the leaf page
@@ -160,11 +165,19 @@ auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transact
   // LOG_DEBUG("Insert | key %s", std::to_string(key.ToString()).c_str());
 
   bool optimistic = true;
+  // if (FindLeafPage(ctx, key, OperationType::INSERT, optimistic, txn)) {
+  //   WritePageGuard guard = std::move(ctx.write_set_.back());
+  //   auto leaf_page = guard.AsMut<LeafPage>();
+  //   bool res = leaf_page->Insert(key, value, comparator_);
+  //   return res;
+  // }
+
   if (FindLeafPage(ctx, key, OperationType::INSERT, optimistic, txn)) {
     WritePageGuard guard = std::move(ctx.write_set_.back());
     auto leaf_page = guard.AsMut<LeafPage>();
-    bool res = leaf_page->Insert(key, value, comparator_);
-    return res;
+    if (leaf_page->IsSafe(OperationType::INSERT)) {
+      return leaf_page->Insert(key, value, comparator_);
+    }
   }
 
   ctx.header_page_ = bpm_->FetchPageWrite(header_page_id_);
@@ -372,11 +385,20 @@ void BPLUSTREE_TYPE::Remove(const KeyType &key, Transaction *txn) {
   // LOG_DEBUG("Remove | key %s", std::to_string(key.ToString()).c_str());
 
   bool optimistic = true;
+  // if (FindLeafPage(ctx, key, OperationType::DELETE, optimistic, txn)) {
+  //   WritePageGuard guard = std::move(ctx.write_set_.back());
+  //   auto leaf_page = guard.AsMut<LeafPage>();
+  //   leaf_page->Delete(key, comparator_);
+  //   return;
+  // }
+
   if (FindLeafPage(ctx, key, OperationType::DELETE, optimistic, txn)) {
     WritePageGuard guard = std::move(ctx.write_set_.back());
     auto leaf_page = guard.AsMut<LeafPage>();
-    leaf_page->Delete(key, comparator_);
-    return;
+    if (leaf_page->IsSafe(OperationType::DELETE)) {
+      leaf_page->Delete(key, comparator_);
+      return;
+    }
   }
 
   ctx.header_page_ = bpm_->FetchPageWrite(header_page_id_);
