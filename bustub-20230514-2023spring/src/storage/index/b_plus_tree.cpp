@@ -18,9 +18,6 @@ BPLUSTREE_TYPE::BPlusTree(std::string name, page_id_t header_page_id, BufferPool
       leaf_max_size_(leaf_max_size),
       internal_max_size_(internal_max_size),
       header_page_id_(header_page_id) {
-  // leaf_max_size_ = 3;
-  // internal_max_size_ = 5;
-
   // LOG_DEBUG("BPlusTree() | internal_max_size: %d; leaf_max_size: %d", internal_max_size_, leaf_max_size_);
 
   WritePageGuard guard = bpm_->FetchPageWrite(header_page_id_);
@@ -47,7 +44,7 @@ auto BPLUSTREE_TYPE::FindLeafPage(Context &ctx, const KeyType &key, OperationTyp
     ctx.root_page_id_ = header_page->root_page_id_;
 
     // b+ tree is empty
-    if (header_page->root_page_id_ == INVALID_PAGE_ID) {  
+    if (header_page->root_page_id_ == INVALID_PAGE_ID) {
       return false;
     }
 
@@ -70,19 +67,10 @@ auto BPLUSTREE_TYPE::FindLeafPage(Context &ctx, const KeyType &key, OperationTyp
     }
 
     // for insert/remove operation
-    auto leaf_page = guard.As<LeafPage>();
     guard.Drop();
     ctx.write_set_.emplace_back(bpm_->FetchPageWrite(tmp_page_id));
 
     return true;
-
-    // if (leaf_page->IsSafe(op_type)) {
-    //   guard.Drop();
-    //   ctx.write_set_.emplace_back(bpm_->FetchPageWrite(tmp_page_id));
-    //   return true;
-    // }
-
-    // return false;
   }
 
   // latch crabbing to find the leaf page
@@ -129,7 +117,7 @@ auto BPLUSTREE_TYPE::GetValue(const KeyType &key, std::vector<ValueType> *result
   Context ctx;
   (void)ctx;
 
-  LOG_DEBUG("Find | key %s", std::to_string(key.ToString()).c_str());
+  // LOG_DEBUG("Find | key %s", std::to_string(key.ToString()).c_str());
 
   // tree is empty
   if (!FindLeafPage(ctx, key, OperationType::FIND, true, txn)) {
@@ -165,19 +153,13 @@ auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transact
   // LOG_DEBUG("Insert | key %s", std::to_string(key.ToString()).c_str());
 
   bool optimistic = true;
-  // if (FindLeafPage(ctx, key, OperationType::INSERT, optimistic, txn)) {
-  //   WritePageGuard guard = std::move(ctx.write_set_.back());
-  //   auto leaf_page = guard.AsMut<LeafPage>();
-  //   bool res = leaf_page->Insert(key, value, comparator_);
-  //   return res;
-  // }
-
   if (FindLeafPage(ctx, key, OperationType::INSERT, optimistic, txn)) {
     WritePageGuard guard = std::move(ctx.write_set_.back());
     auto leaf_page = guard.AsMut<LeafPage>();
     if (leaf_page->IsSafe(OperationType::INSERT)) {
       return leaf_page->Insert(key, value, comparator_);
     }
+    ctx.write_set_.clear();
   }
 
   ctx.header_page_ = bpm_->FetchPageWrite(header_page_id_);
@@ -260,8 +242,6 @@ auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transact
   leaf_page->SetNextPageId(new_page_id);
   InsertInParent(new_page->KeyAt(0), std::move(new_guard), ctx);
 
-  // ctx.write_set_.clear();
-
   return res;
 }
 
@@ -287,7 +267,7 @@ void BPLUSTREE_TYPE::InsertInParent(const KeyType &key, WritePageGuard &&new_pag
     auto new_root_page = new_root_guard.AsMut<InternalPage>();
     new_root_page->Init(INVALID_PAGE_ID, internal_max_size_);
 
-    UpdateParentPage(ctx, new_root_page);
+    UpdateParentPage(ctx, key, new_root_page, std::move(new_page_guard), cur_page_id, header_page->root_page_id_);
     ctx.write_set_.clear();
 
     return;
@@ -345,21 +325,22 @@ void BPLUSTREE_TYPE::InsertInParent(const KeyType &key, WritePageGuard &&new_pag
 }
 
 INDEX_TEMPLATE_ARGUMENTS
-void BPLUSTREE_TYPE::UpdateParentPage(Context &ctx, InternalPage* new_root_page) {
+void BPLUSTREE_TYPE::UpdateParentPage(Context &ctx, const KeyType &key, InternalPage *new_root_page,
+                                      WritePageGuard &&new_page_guard, page_id_t cur_page_id, page_id_t root_page_id) {
   // update the parent_page_id for the new root page
   bool is_leaf_page = ctx.write_set_.back().AsMut<BPlusTreePage>()->IsLeafPage();
   if (is_leaf_page) {
     auto first_child_page = ctx.write_set_.back().AsMut<LeafPage>();
     auto second_child_page = new_page_guard.AsMut<LeafPage>();
 
-    first_child_page->SetParentPageId(header_page->root_page_id_);
-    second_child_page->SetParentPageId(header_page->root_page_id_);
+    first_child_page->SetParentPageId(root_page_id);
+    second_child_page->SetParentPageId(root_page_id);
   } else {
     auto first_child_page = ctx.write_set_.back().AsMut<InternalPage>();
     auto second_child_page = new_page_guard.AsMut<InternalPage>();
 
-    first_child_page->SetParentPageId(header_page->root_page_id_);
-    second_child_page->SetParentPageId(header_page->root_page_id_);
+    first_child_page->SetParentPageId(root_page_id);
+    second_child_page->SetParentPageId(root_page_id);
   }
 
   new_root_page->SetValueAt(0, cur_page_id);
@@ -385,13 +366,6 @@ void BPLUSTREE_TYPE::Remove(const KeyType &key, Transaction *txn) {
   // LOG_DEBUG("Remove | key %s", std::to_string(key.ToString()).c_str());
 
   bool optimistic = true;
-  // if (FindLeafPage(ctx, key, OperationType::DELETE, optimistic, txn)) {
-  //   WritePageGuard guard = std::move(ctx.write_set_.back());
-  //   auto leaf_page = guard.AsMut<LeafPage>();
-  //   leaf_page->Delete(key, comparator_);
-  //   return;
-  // }
-
   if (FindLeafPage(ctx, key, OperationType::DELETE, optimistic, txn)) {
     WritePageGuard guard = std::move(ctx.write_set_.back());
     auto leaf_page = guard.AsMut<LeafPage>();
@@ -399,6 +373,7 @@ void BPLUSTREE_TYPE::Remove(const KeyType &key, Transaction *txn) {
       leaf_page->Delete(key, comparator_);
       return;
     }
+    ctx.write_set_.clear();
   }
 
   ctx.header_page_ = bpm_->FetchPageWrite(header_page_id_);
@@ -418,14 +393,12 @@ void BPLUSTREE_TYPE::Remove(const KeyType &key, Transaction *txn) {
   FindLeafPage(ctx, key, OperationType::DELETE, optimistic, txn, &page_id_to_index);
 
   DeleteLeafEntry(ctx, key, &page_id_to_index);
-
-  // ctx.write_set_.clear();
 }
 
 INDEX_TEMPLATE_ARGUMENTS
 void BPLUSTREE_TYPE::DeleteLeafEntry(Context &ctx, KeyType key, std::unordered_map<page_id_t, int> *page_id_to_index) {
   WritePageGuard cur_guard = std::move(ctx.write_set_.back());
-  ctx.write_set_.pop_back(); 
+  ctx.write_set_.pop_back();
 
   page_id_t cur_leaf_page_id = cur_guard.PageId();
   auto cur_leaf_page = cur_guard.AsMut<LeafPage>();
@@ -582,7 +555,7 @@ void BPLUSTREE_TYPE::DeleteInternalEntry(Context &ctx, KeyType key, page_id_t va
     redistribute_toward_right = false;
   }
 
-  // merge right page into left page 
+  // merge right page into left page
   int left_page_cur_size = left_page->GetSize();
   int right_page_cur_size = right_page->GetSize();
   if (left_page_cur_size + right_page_cur_size <= left_page->GetMaxSize()) {

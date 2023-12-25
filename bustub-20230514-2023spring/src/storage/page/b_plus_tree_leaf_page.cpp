@@ -157,8 +157,8 @@ void B_PLUS_TREE_LEAF_PAGE_TYPE::SetParentPageId(page_id_t parent_page_id) { par
 INDEX_TEMPLATE_ARGUMENTS
 auto B_PLUS_TREE_LEAF_PAGE_TYPE::GetParentPageId() -> page_id_t { return parent_page_id_; }
 
-INDEX_TEMPLATE_ARGUMENTS
-void B_PLUS_TREE_LEAF_PAGE_TYPE::SetNextPageId(page_id_t page_id) { next_page_id_ = page_id; }
+// INDEX_TEMPLATE_ARGUMENTS
+// void B_PLUS_TREE_LEAF_PAGE_TYPE::SetNextPageId(page_id_t page_id) { next_page_id_ = page_id; }
 
 INDEX_TEMPLATE_ARGUMENTS
 auto B_PLUS_TREE_LEAF_PAGE_TYPE::GetNextPageId() -> page_id_t { return next_page_id_; }
