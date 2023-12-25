@@ -40,7 +40,7 @@ auto BPLUSTREE_TYPE::IsEmpty() const -> bool {
 
 INDEX_TEMPLATE_ARGUMENTS
 auto BPLUSTREE_TYPE::FindLeafPage(Context &ctx, const KeyType &key, OperationType op_type, bool is_first_time,
-                                  Transaction *txn) -> bool {
+                                  Transaction *txn, std::unordered_map<page_id_t, int> *page_id_to_index) -> bool {
   // optimistically search for leaf page
   if (is_first_time) {
     ReadPageGuard header_guard = bpm_->FetchPageRead(header_page_id_);
@@ -70,11 +70,35 @@ auto BPLUSTREE_TYPE::FindLeafPage(Context &ctx, const KeyType &key, OperationTyp
 
     // add the guard into write_set_ if the leaf node is safe for insert or remove
     auto leaf_page = guard.As<LeafPage>();
+    // if (leaf_page->IsSafe(op_type)) {
+    //   // LOG_DEBUG("Leaf page is safe, insert %s into the leaf page.", std::to_string(key.ToString()).c_str());
+
+    //   guard.Drop();
+
+    //   // 拿到写锁之后在判断一下 safe 条件是否还成立
+    //   // 这里虽然保证了正确率, 但是效率低了太多, 还得改
+    //   WritePageGuard write_leaf_guard = bpm_->FetchPageWrite(tmp_page_id);
+    //   bool res = write_leaf_guard.As<LeafPage>()->IsSafe(op_type);
+
+    //   if (res) {
+    //     ctx.write_set_.emplace_back(std::move(write_leaf_guard));
+    //   } else {
+    //     ctx.write_set_.clear();
+    //   }
+
+    //   return res;
+    // }
+
     if (leaf_page->IsSafe(op_type)) {
+      // LOG_DEBUG("Leaf page is safe, insert %s into the leaf page.", std::to_string(key.ToString()).c_str());
+
       guard.Drop();
       ctx.write_set_.emplace_back(bpm_->FetchPageWrite(tmp_page_id));
       return true;
     }
+
+    // LOG_DEBUG("(key: %s) Leaf page is not safe, go with the latch crabbing.",
+    // std::to_string(key.ToString()).c_str());
 
     return false;
   }
@@ -86,14 +110,23 @@ auto BPLUSTREE_TYPE::FindLeafPage(Context &ctx, const KeyType &key, OperationTyp
   while (!page->IsLeafPage()) {
     internal_page = guard.AsMut<InternalPage>();
 
-    // latch crabbing: 如果子节点安全的话, 就可以释放所有祖先的锁了
-    if (internal_page->IsSafe(OperationType::INSERT)) {
+    // release all the page guard if the child page is safe for operation
+    if (internal_page->IsSafe(op_type)) {
       ctx.write_set_.clear();
     }
     ctx.write_set_.emplace_back(std::move(guard));
 
-    page_id_t tmp = internal_page->FindValue(key, comparator_);
-    guard = bpm_->FetchPageWrite(tmp);
+    page_id_t child_page_id = -1;
+    if (op_type ==
+        OperationType::DELETE) {  // 记录一下中间节点找孩子节点的索引, 在 merge/redistribute 的时候方便找兄弟节点
+      int child_page_index = -1;
+      child_page_id = internal_page->FindValue(key, comparator_, &child_page_index);
+      (*page_id_to_index)[child_page_id] = child_page_index;
+    } else {
+      child_page_id = internal_page->FindValue(key, comparator_);
+    }
+
+    guard = bpm_->FetchPageWrite(child_page_id);
     page = guard.AsMut<BPlusTreePage>();
   }
 
@@ -149,6 +182,8 @@ auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transact
   Context ctx;
   (void)ctx;
 
+  LOG_DEBUG("Insert | key %s", std::to_string(key.ToString()).c_str());
+
   // 乐观查找: 找到的 leaf page 是安全的, 直接插入并且返回
   bool is_first_time = true;
   if (FindLeafPage(ctx, key, OperationType::INSERT, is_first_time, txn)) {
@@ -170,7 +205,6 @@ auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transact
   // tree is empty
   if (ctx.root_page_id_ == INVALID_PAGE_ID) {
     BasicPageGuard root_page_guard = bpm_->NewPageGuarded(&header_page->root_page_id_);
-    // ctx.root_page_id_ = header_page->root_page_id_;
     auto page = root_page_guard.AsMut<LeafPage>();
     page->Init(INVALID_PAGE_ID, leaf_max_size_);
     root_page_guard.Drop();
@@ -180,9 +214,6 @@ auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transact
     page->Insert(key, value, comparator_);
 
     ctx.header_page_ = std::nullopt;
-
-    LOG_DEBUG("Create the new root node %d", header_page->root_page_id_);
-
     return true;
   }
 
@@ -190,9 +221,9 @@ auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transact
   ctx.write_set_.emplace_back(std::move(ctx.header_page_.value()));
   ctx.header_page_ = std::nullopt;
 
-  // LOG_DEBUG("Insert | key %s", std::to_string(key.ToString()).c_str());
+  // LOG_DEBUG("Insert (require edit) | key %s", std::to_string(key.ToString()).c_str());
 
-  ctx.read_set_.clear();
+  // ctx.read_set_.clear();
   is_first_time = false;
   FindLeafPage(ctx, key, OperationType::INSERT, is_first_time, txn);
   auto leaf_page = ctx.write_set_.back().AsMut<LeafPage>();
@@ -211,7 +242,7 @@ auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transact
     return false;
   }
 
-  // // LOG_DEBUG("\nLeaf page before insert key %s: \n", std::to_string(key.ToString()).c_str());
+  // LOG_DEBUG("\nLeaf page before insert key %s: \n", std::to_string(key.ToString()).c_str());
   // PrintPage(guard, true);
 
   // 叶子节点已满, 先分裂叶子节点, 然后再把新 key 插入到对应的叶子节点
@@ -425,19 +456,28 @@ void BPLUSTREE_TYPE::Remove(const KeyType &key, Transaction *txn) {
   Context ctx;
   (void)ctx;
 
-  // // 乐观查找: 找到的 leaf page 是安全的, 直接删除并且返回
-  // bool is_first_time = true;
-  // if (FindLeafPage(ctx, key, OperationType::INSERT, is_first_time, txn)) {
-  //   WritePageGuard guard = std::move(ctx.write_set_.back());
-  //   auto leaf_page = guard.AsMut<LeafPage>();
-  //   bool res = leaf_page->Insert(key, value, comparator_);
-  //   ctx.write_set_.clear();
-  //   return res;
-  // }
+  // std::cout << "\n++++++++++++++++++++++++" << std::endl;
+  // Print(bpm_);
+  // std::cout << "++++++++++++++++++++++++\n" << std::endl;
+
+  LOG_DEBUG("Remove | key %s", std::to_string(key.ToString()).c_str());
+
+  // 乐观查找: 找到的 leaf page 是安全的, 直接删除并且返回
+  bool is_first_time = true;
+  if (FindLeafPage(ctx, key, OperationType::DELETE, is_first_time, txn)) {
+    WritePageGuard guard = std::move(ctx.write_set_.back());
+    auto leaf_page = guard.AsMut<LeafPage>();
+    // bool res = leaf_page->Delete(key, value, comparator_);
+    leaf_page->Delete(key, comparator_);
+    ctx.write_set_.clear();
+    // return res;
+    return;
+  }
 
   ctx.header_page_ = bpm_->FetchPageWrite(header_page_id_);
   auto header_page = ctx.header_page_.value().AsMut<BPlusTreeHeaderPage>();
   ctx.root_page_id_ = header_page->root_page_id_;
+
   if (header_page->root_page_id_ == INVALID_PAGE_ID) {  // B+ 树是空的, 直接返回
     return;
   }
@@ -446,41 +486,51 @@ void BPLUSTREE_TYPE::Remove(const KeyType &key, Transaction *txn) {
   ctx.write_set_.emplace_back(std::move(ctx.header_page_.value()));
   ctx.header_page_ = std::nullopt;
 
-  // to find the leaf page
-  WritePageGuard guard = bpm_->FetchPageWrite(header_page->root_page_id_);
-  auto page = guard.AsMut<BPlusTreePage>();
-  InternalPage *internal_page = nullptr;
+  // // to find the leaf page
+  // WritePageGuard guard = bpm_->FetchPageWrite(header_page->root_page_id_);
+  // auto page = guard.AsMut<BPlusTreePage>();
+  // InternalPage *internal_page = nullptr;
+  // std::unordered_map<page_id_t, int> page_id_to_index;
+  // while (!page->IsLeafPage()) {
+  //   internal_page = guard.AsMut<InternalPage>();
+
+  //   // latch crabbing: 如果子节点安全的话, 就可以释放所有祖先的锁了
+  //   if (internal_page->IsSafe(OperationType::DELETE)) {
+  //     ctx.write_set_.clear();
+  //   }
+  //   ctx.write_set_.emplace_back(std::move(guard));
+
+  //   // 记录一下中间节点找孩子节点的索引, 在 merge/redistribute 的时候方便找兄弟节点
+  //   int child_page_index = -1;
+  //   page_id_t child_page_id = internal_page->FindValue(key, comparator_, &child_page_index);
+  //   page_id_to_index[child_page_id] = child_page_index;
+
+  //   guard = bpm_->FetchPageWrite(child_page_id);
+  //   page = guard.AsMut<BPlusTreePage>();
+  // }
+
+  // // LOG_DEBUG("Remove | remove the key %s", std::to_string(key.ToString()).c_str());
+
+  // auto leaf_page = guard.AsMut<LeafPage>();
+
+  // ctx.read_set_.clear();
+  is_first_time = false;
   std::unordered_map<page_id_t, int> page_id_to_index;
-  while (!page->IsLeafPage()) {
-    internal_page = guard.AsMut<InternalPage>();
+  FindLeafPage(ctx, key, OperationType::DELETE, is_first_time, txn, &page_id_to_index);
+  // auto leaf_page = ctx.write_set_.back().AsMut<LeafPage>();
 
-    // latch crabbing: 如果子节点安全的话, 就可以释放所有祖先的锁了
-    if (internal_page->IsSafe(OperationType::DELETE)) {
-      ctx.write_set_.clear();
-    }
-    ctx.write_set_.emplace_back(std::move(guard));
+  // ValueType res;
+  // if (!leaf_page->FindValue(key, res, comparator_)) {  // 叶子节点找不到对应的 key 值, 直接返回
+  //   ctx.write_set_.clear();
+  //   return;
+  // }
 
-    // 记录一下中间节点找孩子节点的索引, 在 merge/redistribute 的时候方便找兄弟节点
-    int child_page_index = -1;
-    page_id_t child_page_id = internal_page->FindValue(key, comparator_, &child_page_index);
-    page_id_to_index[child_page_id] = child_page_index;
-
-    guard = bpm_->FetchPageWrite(child_page_id);
-    page = guard.AsMut<BPlusTreePage>();
-  }
-
-  // LOG_DEBUG("Remove | remove the key %s", std::to_string(key.ToString()).c_str());
-
-  auto leaf_page = guard.AsMut<LeafPage>();
-  ValueType res;
-  if (!leaf_page->FindValue(key, res, comparator_)) {  // 叶子节点找不到对应的 key 值, 直接返回
-    ctx.write_set_.clear();
-    return;
-  }
+  // LOG_DEBUG("Before delete: ctx.write_set_ size: %lu; front id: %d; back id: %d", ctx.write_set_.size(),
+  //           ctx.write_set_.front().PageId(), ctx.write_set_.back().PageId());
 
   // 调用递归函数
-  ctx.write_set_.emplace_back(std::move(guard));
-  DeleteEntry(ctx, key, res, page_id_to_index);
+  // ctx.write_set_.emplace_back(std::move(guard));
+  DeleteEntry(ctx, key, &page_id_to_index);
 
   // drop the header page guard when you want to unlock all
   ctx.write_set_.clear();
@@ -488,8 +538,7 @@ void BPLUSTREE_TYPE::Remove(const KeyType &key, Transaction *txn) {
 
 // DeleteEntry 只负责叶子节点层级删除的处理
 INDEX_TEMPLATE_ARGUMENTS
-void BPLUSTREE_TYPE::DeleteEntry(Context &ctx, KeyType key, ValueType val,
-                                 std::unordered_map<page_id_t, int> &page_id_to_index) {
+void BPLUSTREE_TYPE::DeleteEntry(Context &ctx, KeyType key, std::unordered_map<page_id_t, int> *page_id_to_index) {
   WritePageGuard cur_guard = std::move(ctx.write_set_.back());
   ctx.write_set_.pop_back();  // 弹出叶子节点
   page_id_t cur_leaf_page_id = cur_guard.PageId();
@@ -498,7 +547,13 @@ void BPLUSTREE_TYPE::DeleteEntry(Context &ctx, KeyType key, ValueType val,
   // // LOG_DEBUG("DeleteEntry key: %s in leaf page %d", std::to_string(key.ToString()).c_str(), cur_leaf_page_id);
 
   // 删除失败 (过度保护一下)
-  if (!cur_leaf_page->Delete(key, val, comparator_)) {
+  // if (!cur_leaf_page->Delete(key, val, comparator_)) {
+  //   // LOG_DEBUG("DeleteEntry | delete key %s fails, return!", std::to_string(key.ToString()).c_str());
+  //   return;
+  // }
+
+  // 删除失败, 直接返回 (比如说叶子节点找不到对应的键值, 直接返回)
+  if (!cur_leaf_page->Delete(key, comparator_)) {
     // LOG_DEBUG("DeleteEntry | delete key %s fails, return!", std::to_string(key.ToString()).c_str());
     return;
   }
@@ -526,7 +581,7 @@ void BPLUSTREE_TYPE::DeleteEntry(Context &ctx, KeyType key, ValueType val,
   }
 
   // 获取父节点的 PageGuard
-  page_id_t index_in_parent_page = page_id_to_index[cur_leaf_page_id];
+  page_id_t index_in_parent_page = (*page_id_to_index)[cur_leaf_page_id];
   WritePageGuard &parent_guard = ctx.write_set_.back();
   auto parent_page = parent_guard.AsMut<InternalPage>();
 
@@ -569,6 +624,10 @@ void BPLUSTREE_TYPE::DeleteEntry(Context &ctx, KeyType key, ValueType val,
     // 叶子节点需要更新一下 next_page_id
     left_page->SetNextPage(right_page->GetNextPageId());
 
+    // std::cout << "\n++++++++++++++++++++++++" << std::endl;
+    // Print(bpm_);
+    // std::cout << "++++++++++++++++++++++++\n" << std::endl;
+
     DeleteInternalEntry(ctx, up_key, up_value, page_id_to_index);
     return;
   }
@@ -590,13 +649,17 @@ void BPLUSTREE_TYPE::DeleteEntry(Context &ctx, KeyType key, ValueType val,
 // DeleteInternalEntry 负责中间节点 (包括根节点) 的删除处理
 INDEX_TEMPLATE_ARGUMENTS
 void BPLUSTREE_TYPE::DeleteInternalEntry(Context &ctx, KeyType key, page_id_t val,
-                                         std::unordered_map<page_id_t, int> &page_id_to_index) {
+                                         std::unordered_map<page_id_t, int> *page_id_to_index) {
   WritePageGuard cur_internal_guard = std::move(ctx.write_set_.back());
   ctx.write_set_.pop_back();
   auto cur_internal_page = cur_internal_guard.AsMut<InternalPage>();
   page_id_t cur_internal_page_id = cur_internal_guard.PageId();
 
-  if (!cur_internal_page->Delete(key, val, comparator_)) {
+  // if (!cur_internal_page->Delete(key, val, comparator_)) {
+  //   return;
+  // }
+
+  if (!cur_internal_page->Delete(key, comparator_)) {
     return;
   }
 
@@ -622,8 +685,19 @@ void BPLUSTREE_TYPE::DeleteInternalEntry(Context &ctx, KeyType key, page_id_t va
     return;
   }
 
+  // std::cout << "\n++++++++++++++++++++++++" << std::endl;
+  // Print(bpm_);
+  // std::cout << "++++++++++++++++++++++++\n" << std::endl;
+
   // 获取父节点的 PageGuard
-  page_id_t index_in_parent_page = page_id_to_index[cur_internal_page_id];
+
+  // LOG_DEBUG("cur_internal_page_id %d; root_page_id %d; header_page_id_: %d; ctx.write_set_ size: %lu",
+  //           cur_internal_page_id, ctx.root_page_id_, header_page_id_, ctx.write_set_.size());
+  // LOG_DEBUG("back of the write_set_ %d (should be an internal page)", ctx.write_set_.back().PageId());
+  // LOG_DEBUG("Front of the write_set_ %d (write_set_ size: %lu)", ctx.write_set_.front().PageId(),
+  //           ctx.write_set_.size());
+
+  page_id_t index_in_parent_page = (*page_id_to_index)[cur_internal_page_id];
   WritePageGuard &parent_guard = ctx.write_set_.back();
   auto parent_page = parent_guard.AsMut<InternalPage>();
 

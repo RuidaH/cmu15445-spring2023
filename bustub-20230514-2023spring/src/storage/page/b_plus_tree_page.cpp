@@ -51,7 +51,12 @@ auto BPlusTreePage::IsSafe(OperationType op_type) const -> bool {
     return op_type == OperationType::INSERT ? GetSize() < GetMaxSize() : GetSize() > GetMinSize();
   }
   // page_type_ == IndexPageType::LEAF_PAGE
-  return op_type == OperationType::INSERT ? GetSize() < GetMaxSize() - 1 : GetSize() > GetMinSize();
+  // LOG_DEBUG(
+  //     "page type: %d; operation type: %d, cur_size: %d; min_size: %d, max_size: %d; GetSize() < GetMaxSize() - 1: %d
+  //     ", page_type_, op_type, GetSize(), GetMinSize(), GetMaxSize(), GetSize() < GetMaxSize() - 1);
+  // return op_type == OperationType::INSERT ? GetSize() < GetMaxSize() - 1 : GetSize() > GetMinSize();
+  // 在放松一点条件, 防止多线程在临界值的时候同时修改同一个叶子节点导致 heap-buffer-overflow
+  return op_type == OperationType::INSERT ? GetSize() < GetMaxSize() - 2 : GetSize() > GetMinSize();
 }
 
 }  // namespace bustub

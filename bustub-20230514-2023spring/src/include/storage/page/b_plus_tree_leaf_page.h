@@ -65,6 +65,7 @@ class BPlusTreeLeafPage : public BPlusTreePage {
       -> bool;
   auto Insert(const KeyType &key, const ValueType &value, const KeyComparator &comparator) -> bool;
   auto Delete(const KeyType &key, const ValueType &value, const KeyComparator &comparator) -> bool;
+  auto Delete(const KeyType &key, const KeyComparator &comparator) -> bool;
   void SetNextPage(page_id_t page_id);
   void CopyHalfFrom(MappingType *array, int min_size, int size);
   void EraseHalf();
@@ -74,7 +75,6 @@ class BPlusTreeLeafPage : public BPlusTreePage {
   void SetParentPageId(page_id_t parent_page_id);
   void Merge(MappingType *array, int size);
   void ShiftData(int dist);
-  // auto IsSafe(bool is_insert) -> bool;
 
   /**
    * @brief for test only return a string representing all keys in

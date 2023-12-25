@@ -76,6 +76,7 @@ class BPlusTreeInternalPage : public BPlusTreePage {
   auto FindValue(KeyType key, const KeyComparator &comparator, int *child_page_index = nullptr) const -> ValueType;
   auto Insert(const KeyType &key, const ValueType &value, const KeyComparator &comparator) -> bool;
   auto Delete(const KeyType &key, const ValueType &value, const KeyComparator &comparator) -> bool;
+  auto Delete(const KeyType &key, const KeyComparator &comparator) -> bool;
   void SetKeyValueAt(int index, const KeyType &key, const ValueType &value);
   void SetValueAt(int index, const ValueType &value);
   void CopyHalfFrom(MappingType *array, int min_size, int size);

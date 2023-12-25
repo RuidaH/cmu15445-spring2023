@@ -133,11 +133,11 @@ class BPlusTree {
 
   /* helper function */
   void InsertInParent(const KeyType &key, WritePageGuard &&new_page_guard, Context &ctx);
-  void DeleteEntry(Context &ctx, KeyType key, ValueType val, std::unordered_map<page_id_t, int> &page_id_to_index);
+  void DeleteEntry(Context &ctx, KeyType key, std::unordered_map<page_id_t, int> *page_id_to_index);
   void DeleteInternalEntry(Context &ctx, KeyType key, page_id_t val,
-                           std::unordered_map<page_id_t, int> &page_id_to_index);
-  auto FindLeafPage(Context &ctx, const KeyType &key, OperationType op_type, bool is_first_time, Transaction *txn)
-      -> bool;
+                           std::unordered_map<page_id_t, int> *page_id_to_index);
+  auto FindLeafPage(Context &ctx, const KeyType &key, OperationType op_type, bool is_first_time, Transaction *txn,
+                    std::unordered_map<page_id_t, int> *page_id_to_index = nullptr) -> bool;
 
   // auto FindLeafPageId(const KeyType &key, page_id_t &page_id) -> bool;
   void PrintPage(WritePageGuard &guard, bool is_leaf_page);

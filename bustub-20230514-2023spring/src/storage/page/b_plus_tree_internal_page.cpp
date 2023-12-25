@@ -129,7 +129,7 @@ auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::Insert(const KeyType &key, const ValueType 
 
   // insert new <key, value> pair
   int index = std::distance(array_, it);
-  std::copy_backward(array_ + index, array_ + size, array_ + size + 1);
+  std::move_backward(array_ + index, array_ + size, array_ + size + 1);
   IncreaseSize(1);
   array_[index] = std::make_pair(key, value);
 
@@ -157,6 +157,23 @@ auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::Delete(const KeyType &key, const ValueType 
 }
 
 INDEX_TEMPLATE_ARGUMENTS
+auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::Delete(const KeyType &key, const KeyComparator &comparator) -> bool {
+  auto compare_first = [comparator](const MappingType &lhs, KeyType rhs) -> bool {
+    return comparator(lhs.first, rhs) < 0;
+  };
+
+  auto res = std::lower_bound(array_, array_ + GetSize() - 1, key, compare_first);
+  if (comparator(key, res->first) == 0) {
+    int dist = std::distance(array_, res);
+    std::copy(array_ + dist + 1, array_ + GetSize(), array_ + dist);
+    IncreaseSize(-1);
+    return true;
+  }
+
+  return false;
+}
+
+INDEX_TEMPLATE_ARGUMENTS
 void B_PLUS_TREE_INTERNAL_PAGE_TYPE::Merge(MappingType *array, int size) {
   std::copy(array, array + size, array_ + GetSize());
   IncreaseSize(size);
@@ -171,16 +188,6 @@ void B_PLUS_TREE_INTERNAL_PAGE_TYPE::ShiftData(int dist) {
   }
   IncreaseSize(dist);
 }
-
-// // insert: true; delete: false
-// INDEX_TEMPLATE_ARGUMENTS
-// auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::IsSafe(bool is_insert) -> bool {
-//   if (is_insert) {
-//     return GetSize() < GetMaxSize();
-//   } else {
-//     return GetSize() > GetMinSize();
-//   }
-// }
 
 INDEX_TEMPLATE_ARGUMENTS
 void B_PLUS_TREE_INTERNAL_PAGE_TYPE::SetParentPageId(page_id_t parent_page_id) { parent_page_id_ = parent_page_id; }

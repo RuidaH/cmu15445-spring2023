@@ -110,6 +110,10 @@ auto B_PLUS_TREE_LEAF_PAGE_TYPE::Insert(const KeyType &key, const ValueType &val
   // insert new <key, value> pair
   int index = std::distance(array_, it);
 
+  LOG_DEBUG("(key: %s) Leaf page Insertion | index: %d; size: %d; size + 1: %d; with key: %s",
+            std::to_string(key.ToString()).c_str(), index, GetSize(), GetSize() + 1,
+            std::to_string(key.ToString()).c_str());
+
   // std::copy_backward(array_ + index, array_ + size, array_ + size + 1);
   std::move_backward(array_ + index, array_ + size, array_ + size + 1);
 
@@ -142,10 +146,28 @@ auto B_PLUS_TREE_LEAF_PAGE_TYPE::Delete(const KeyType &key, const ValueType &val
   if (comparator(key, res->first) == 0 && value == res->second) {
     // remove the <key, value> from the leaf node
     int dist = std::distance(array_, res);
+    std::copy(array_ + dist + 1, array_ + GetSize(), array_ + dist);
+    IncreaseSize(-1);
+    return true;
+  }
 
-    // LOG_DEBUG("Leaf page Deletion | index: %d; size: %d; size + 1: %d; with key: %s", dist, GetSize(), GetSize() - 1,
-    //           std::to_string(key.ToString()).c_str());
+  return false;
+}
 
+INDEX_TEMPLATE_ARGUMENTS
+auto B_PLUS_TREE_LEAF_PAGE_TYPE::Delete(const KeyType &key, const KeyComparator &comparator) -> bool {
+  if (GetSize() == 0) {
+    return false;
+  }
+
+  auto compare_first = [comparator](const MappingType &lhs, KeyType rhs) -> bool {
+    return comparator(lhs.first, rhs) < 0;
+  };
+
+  auto res = std::lower_bound(array_, array_ + GetSize() - 1, key, compare_first);
+  if (comparator(key, res->first) == 0) {
+    // remove the <key, value> from the leaf node
+    int dist = std::distance(array_, res);
     std::copy(array_ + dist + 1, array_ + GetSize(), array_ + dist);
     IncreaseSize(-1);
     return true;
