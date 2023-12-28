@@ -104,10 +104,27 @@ auto B_PLUS_TREE_LEAF_PAGE_TYPE::Insert(const KeyType &key, const ValueType &val
 
   // insert <key, value>
   int index = std::distance(array_, it);
-  std::move_backward(array_ + index, array_ + size, array_ + size + 1);
+  if (index == GetSize()) {
+    array_[index] = MappingType{key, value};
+    IncreaseSize(1);
+    return true;
+  }
 
-  array_[index].first = key;
-  array_[index].second = value;
+  // std::move_backward(array_ + index, array_ + size, array_ + size + 1);
+  // array_[index] = MappingType{key, value};
+  // IncreaseSize(1);
+
+  LOG_DEBUG("Leaf page: cur size: %d, max size: %d", GetSize(), GetMaxSize());
+  LOG_DEBUG("size of the array: %lu", sizeof(array_));
+  array_[GetSize()].first = key;
+  array_[GetSize()].second = value;
+  // array_[GetSize()] = MappingType{key, value};
+  for (int j = GetSize(); j > index; --j) {
+    if (j >= 250) {
+      LOG_DEBUG("swapping j=%d and j-1=%d", j, j - 1);
+    }
+    std::swap(array_[j], array_[j - 1]);
+  }
   IncreaseSize(1);
 
   return true;
