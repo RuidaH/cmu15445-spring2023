@@ -18,7 +18,7 @@ BPLUSTREE_TYPE::BPlusTree(std::string name, page_id_t header_page_id, BufferPool
       leaf_max_size_(leaf_max_size),
       internal_max_size_(internal_max_size),
       header_page_id_(header_page_id) {
-  // LOG_DEBUG("BPlusTree() | internal_max_size: %d; leaf_max_size: %d", internal_max_size_, leaf_max_size_);
+  LOG_DEBUG("BPlusTree() | internal_max_size: %d; leaf_max_size: %d", internal_max_size_, leaf_max_size_);
 
   WritePageGuard guard = bpm_->FetchPageWrite(header_page_id_);
   auto root_page = guard.AsMut<BPlusTreeHeaderPage>();
@@ -130,7 +130,7 @@ auto BPLUSTREE_TYPE::GetValue(const KeyType &key, std::vector<ValueType> *result
   Context ctx;
   (void)ctx;
 
-  // LOG_DEBUG("Find | key %s", std::to_string(key.ToString()).c_str());
+  LOG_DEBUG("Find | key %s", std::to_string(key.ToString()).c_str());
 
   // tree is empty
   if (!FindLeafPage(ctx, key, OperationType::FIND, true, txn)) {
@@ -163,13 +163,15 @@ auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transact
   Context ctx;
   (void)ctx;
 
-  // LOG_DEBUG("Insert | key %s", std::to_string(key.ToString()).c_str());
+  LOG_DEBUG("Insert | key %s", std::to_string(key.ToString()).c_str());
 
   bool optimistic = true;
   if (FindLeafPage(ctx, key, OperationType::INSERT, optimistic, txn)) {
     WritePageGuard guard = std::move(ctx.write_set_.back());
     auto leaf_page = guard.AsMut<LeafPage>();
     if (leaf_page->IsSafe(OperationType::INSERT)) {
+      LOG_DEBUG("current leaf page is safe for insert (page id: %d; cur_size: %d => %d)", guard.PageId(),
+                leaf_page->GetSize(), leaf_page->GetSize() + 1);
       return leaf_page->Insert(key, value, comparator_);
     }
     ctx.write_set_.clear();
@@ -198,6 +200,8 @@ auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transact
   // ctx.write_set_.emplace_back(std::move(ctx.header_page_.value()));
   // ctx.header_page_ = std::nullopt;
 
+  LOG_DEBUG("Fail to insert %s optiministically, restart pessiministically", std::to_string(key.ToString()).c_str());
+
   optimistic = false;
   FindLeafPage(ctx, key, OperationType::INSERT, optimistic, txn);
 
@@ -205,6 +209,15 @@ auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transact
   auto leaf_page = ctx.write_set_.back().AsMut<LeafPage>();
   if (leaf_page->IsSafe(OperationType::INSERT)) {
     bool res = leaf_page->Insert(key, value, comparator_);
+
+    if (res) {
+      LOG_DEBUG("Pessiministic Insert %s succeed; cur_size: %d", std::to_string(key.ToString()).c_str(),
+                leaf_page->GetSize());
+    } else {
+      LOG_DEBUG("Pessiministic Insert %s fail (find duplicate key); cur_size: %d",
+                std::to_string(key.ToString()).c_str(), leaf_page->GetSize());
+    }
+
     ctx.write_set_.clear();
     return res;
   }
@@ -214,6 +227,9 @@ auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transact
   //   ctx.write_set_.clear();
   //   return res;
   // }
+
+  LOG_DEBUG("leaf page %d is not safe, requrie split; cur_size: %d", ctx.write_set_.back().PageId(),
+            leaf_page->GetSize());
 
   // leaf_page is not safe (one step towards the full page)
   if (leaf_page->Insert(key, value, comparator_)) {
@@ -247,6 +263,8 @@ auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transact
     ctx.write_set_.pop_back();
     InsertInParent(pushed_key, std::move(new_guard), ctx);
   }
+
+  LOG_DEBUG("(Split case) Insert %s fails, duplicate key is found", std::to_string(key.ToString()).c_str());
 
   // find duplicate key
   ctx.write_set_.clear();
@@ -453,7 +471,7 @@ void BPLUSTREE_TYPE::Remove(const KeyType &key, Transaction *txn) {
   Context ctx;
   (void)ctx;
 
-  // LOG_DEBUG("Remove | key %s", std::to_string(key.ToString()).c_str());
+  LOG_DEBUG("Remove | key %s", std::to_string(key.ToString()).c_str());
 
   bool optimistic = true;
   if (FindLeafPage(ctx, key, OperationType::DELETE, optimistic, txn)) {
