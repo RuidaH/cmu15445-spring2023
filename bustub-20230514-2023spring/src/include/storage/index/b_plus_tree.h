@@ -140,11 +140,11 @@ class BPlusTree {
                     std::unordered_map<page_id_t, int> *page_id_to_index = nullptr) -> bool;
   void UpdateParentPage(Context &ctx, const KeyType &key, InternalPage *new_root_page, WritePageGuard &&new_page_guard,
                         page_id_t cur_page_id, page_id_t root_page_id);
-  void NewLeafRootPage(Context &ctx, page_id_t* root_page_id);
+  void NewLeafRootPage(Context &ctx, page_id_t *root_page_id);
   void PrintPage(WritePageGuard &guard, bool is_leaf_page);
   void PrintPage(ReadPageGuard &guard, bool is_leaf_page);
-  LeafPage* NewLeafPage(Context &ctx);
-  KeyType Split(LeafPage* leaf_page, LeafPage* new_page);
+  auto NewLeafPage(Context &ctx, page_id_t *new_page_id, page_id_t parent_page_id) -> LeafPage *;
+  auto Split(LeafPage *leaf_page, LeafPage *new_page) -> KeyType;
 
   // member variable
   std::string index_name_;

@@ -232,7 +232,8 @@ auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transact
     // WritePageGuard new_guard = bpm_->FetchPageWrite(new_page_id);
     // new_page = new_guard.AsMut<LeafPage>();
 
-    LeafPage* new_page = NewLeafPage(ctx);
+    page_id_t new_page_id;
+    LeafPage *new_page = NewLeafPage(ctx, &new_page_id, leaf_page->GetParentPageId());
 
     // split the current leaf page
     KeyType pushed_key = Split(leaf_page, new_page);
@@ -245,6 +246,7 @@ auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transact
     new_page->SetNextPageId(leaf_page->GetNextPageId());
     leaf_page->SetNextPageId(new_page_id);
 
+    WritePageGuard new_guard = std::move(ctx.write_set_.back());
     ctx.write_set_.pop_back();
     InsertInParent(pushed_key, std::move(new_guard), ctx);
   }
@@ -406,7 +408,7 @@ void BPLUSTREE_TYPE::UpdateParentPage(Context &ctx, const KeyType &key, Internal
 }
 
 INDEX_TEMPLATE_ARGUMENTS
-void BPLUSTREE_TYPE::NewLeafRootPage(Context &ctx, page_id_t* root_page_id) {
+void BPLUSTREE_TYPE::NewLeafRootPage(Context &ctx, page_id_t *root_page_id) {
   BasicPageGuard root_page_guard = bpm_->NewPageGuarded(root_page_id);
   ctx.root_page_id_ = *root_page_id;
   auto page = root_page_guard.AsMut<LeafPage>();
@@ -415,27 +417,27 @@ void BPLUSTREE_TYPE::NewLeafRootPage(Context &ctx, page_id_t* root_page_id) {
 }
 
 INDEX_TEMPLATE_ARGUMENTS
-LeafPage* BPLUSTREE_TYPE::NewLeafPage(Context &ctx) {
-  page_id_t new_page_id;
-  BasicPageGuard new_page_guard = bpm_->NewPageGuarded(&new_page_id);
+auto BPLUSTREE_TYPE::NewLeafPage(Context &ctx, page_id_t *new_page_id, page_id_t parent_page_id) ->
+    typename BPLUSTREE_TYPE::LeafPage * {
+  BasicPageGuard new_page_guard = bpm_->NewPageGuarded(new_page_id);
   auto new_page = new_page_guard.AsMut<LeafPage>();
-  new_page->Init(leaf_page->GetParentPageId(), leaf_max_size_);
+  new_page->Init(parent_page_id, leaf_max_size_);
   new_page_guard.Drop();
-  
-  WritePageGuard new_guard = bpm_->FetchPageWrite(new_page_id);
+
+  WritePageGuard new_guard = bpm_->FetchPageWrite(*new_page_id);
   ctx.write_set_.emplace_back(std::move(new_guard));
   return ctx.write_set_.back().AsMut<LeafPage>();
 }
 
 INDEX_TEMPLATE_ARGUMENTS
-KeyType BPLUSTREE_TYPE::Split(LeafPage* leaf_page, LeafPage* new_page) {
+auto BPLUSTREE_TYPE::Split(LeafPage *leaf_page, LeafPage *new_page) -> KeyType {
   int min_size = leaf_page->GetMinSize();
   int cur_size = leaf_page->GetSize();
   new_page->CopyHalfFrom(leaf_page->GetData(), min_size, cur_size);
   KeyType pushed_key = leaf_page->KeyAt(min_size);
   new_page->SetSize(cur_size - min_size);
   leaf_page->SetSize(min_size);
-  
+
   return pushed_key;
 }
 
