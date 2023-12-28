@@ -145,6 +145,7 @@ class BPlusTree {
   void PrintPage(ReadPageGuard &guard, bool is_leaf_page);
   auto NewLeafPage(Context &ctx, page_id_t *new_page_id, page_id_t parent_page_id) -> LeafPage *;
   auto Split(LeafPage *leaf_page, LeafPage *new_page) -> KeyType;
+  auto GetTxnId(Transaction *txn) -> size_t;
 
   // member variable
   std::string index_name_;
