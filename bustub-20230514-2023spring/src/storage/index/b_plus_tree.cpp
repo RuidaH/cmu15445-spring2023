@@ -60,15 +60,12 @@ auto BPLUSTREE_TYPE::FindLeafPage(Context &ctx, const KeyType &key, OperationTyp
       page = guard.As<BPlusTreePage>();
     }
 
-    // for find operation
     if (op_type == OperationType::FIND) {
       ctx.read_set_.emplace_back(std::move(guard));
-      return true;
+    } else {
+      guard.Drop();
+      ctx.write_set_.emplace_back(bpm_->FetchPageWrite(tmp_page_id));
     }
-
-    // for insert/remove operation
-    guard.Drop();
-    ctx.write_set_.emplace_back(bpm_->FetchPageWrite(tmp_page_id));
 
     return true;
   }

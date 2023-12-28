@@ -104,6 +104,7 @@ auto B_PLUS_TREE_LEAF_PAGE_TYPE::Insert(const KeyType &key, const ValueType &val
 
   // insert <key, value>
   int index = std::distance(array_, it);
+  BUSTUB_ASSERT(GetSize() == 255, "The leaf page is full already!!!");
   std::move_backward(array_ + index, array_ + size, array_ + size + 1);
 
   array_[index].first = key;
