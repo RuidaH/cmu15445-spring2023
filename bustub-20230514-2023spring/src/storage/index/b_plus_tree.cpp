@@ -75,6 +75,9 @@ auto BPLUSTREE_TYPE::FindLeafPage(Context &ctx, const KeyType &key, OperationTyp
   auto header_page = ctx.header_page_.value().AsMut<BPlusTreeHeaderPage>();
   ctx.root_page_id_ = header_page->root_page_id_;
 
+  LOG_DEBUG("Txn %zu: Acquiring header page (pessimistically search for %s)", GetTxnId(txn),
+            std::to_string(key.ToString()).c_str());
+
   // b+ tree is empty
   if (header_page->root_page_id_ == INVALID_PAGE_ID) {
     if (op_type == OperationType::DELETE) {
@@ -95,6 +98,7 @@ auto BPLUSTREE_TYPE::FindLeafPage(Context &ctx, const KeyType &key, OperationTyp
 
     if (internal_page->IsSafe(op_type)) {
       ctx.write_set_.clear();
+      LOG_DEBUG("Clear all memebers in write_set_");
     }
     ctx.write_set_.emplace_back(std::move(guard));
 
@@ -112,6 +116,8 @@ auto BPLUSTREE_TYPE::FindLeafPage(Context &ctx, const KeyType &key, OperationTyp
   }
 
   // add the leaf page guard into the write_set_
+  LOG_DEBUG("Txn %zu: Acquiring leaf page %d (pessimistically search for %s)", GetTxnId(txn), guard.PageId(),
+            std::to_string(key.ToString()).c_str());
   ctx.write_set_.emplace_back(std::move(guard));
 
   return true;
@@ -130,7 +136,7 @@ auto BPLUSTREE_TYPE::GetValue(const KeyType &key, std::vector<ValueType> *result
   Context ctx;
   (void)ctx;
 
-  LOG_DEBUG("Txn %zu: Find | key %s", GetTxnId(txn), std::to_string(key.ToString()).c_str());
+  // LOG_DEBUG("Txn %zu: Find | key %s", GetTxnId(txn), std::to_string(key.ToString()).c_str());
 
   // tree is empty
   if (!FindLeafPage(ctx, key, OperationType::FIND, true, txn)) {
@@ -150,9 +156,9 @@ auto BPLUSTREE_TYPE::GetValue(const KeyType &key, std::vector<ValueType> *result
 
 INDEX_TEMPLATE_ARGUMENTS
 auto BPLUSTREE_TYPE::GetTxnId(Transaction *txn) -> size_t {
-  auto threadId = txn->GetThreadId();
-  auto threadIdHash = std::hash<std::thread::id>{}(threadId);
-  return threadIdHash;  // %zu
+  auto thread_id = txn->GetThreadId();
+  auto thread_id_hash = std::hash<std::thread::id>{}(thread_id);
+  return thread_id_hash;  // %zu
 }
 
 /*****************************************************************************
@@ -177,10 +183,12 @@ auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transact
     WritePageGuard guard = std::move(ctx.write_set_.back());
     auto leaf_page = guard.AsMut<LeafPage>();
     if (leaf_page->IsSafe(OperationType::INSERT)) {
-      LOG_DEBUG("Txn %zu: current leaf page is safe for insert (page id: %d; cur_size: %d => %d)", GetTxnId(txn), guard.PageId(),
-                leaf_page->GetSize(), leaf_page->GetSize() + 1);
+      LOG_DEBUG("Txn %zu: current leaf page is safe for insert %s (page id: %d; cur_size: %d => %d)", GetTxnId(txn),
+                std::to_string(key.ToString()).c_str(), guard.PageId(), leaf_page->GetSize(), leaf_page->GetSize() + 1);
       return leaf_page->Insert(key, value, comparator_);
     }
+    LOG_DEBUG("Txn %zu: Fail to insert %s optimistically, restart pessimistically (cur page size: %d)", GetTxnId(txn),
+              std::to_string(key.ToString()).c_str(), leaf_page->GetSize());
     ctx.write_set_.clear();
   }
 
@@ -207,8 +215,6 @@ auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transact
   // ctx.write_set_.emplace_back(std::move(ctx.header_page_.value()));
   // ctx.header_page_ = std::nullopt;
 
-  LOG_DEBUG("Txn %zu: Fail to insert %s optiministically, restart pessiministically", GetTxnId(txn), std::to_string(key.ToString()).c_str());
-
   optimistic = false;
   FindLeafPage(ctx, key, OperationType::INSERT, optimistic, txn);
 
@@ -218,11 +224,11 @@ auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transact
     bool res = leaf_page->Insert(key, value, comparator_);
 
     if (res) {
-      LOG_DEBUG("Txn %zu: Pessiministic Insert %s succeed; cur_size: %d", GetTxnId(txn), std::to_string(key.ToString()).c_str(),
-                leaf_page->GetSize());
+      LOG_DEBUG("Txn %zu: Pessimistic Insert %s succeed; cur_size: %d", GetTxnId(txn),
+                std::to_string(key.ToString()).c_str(), leaf_page->GetSize());
     } else {
-      LOG_DEBUG("Txn %zu: Pessiministic Insert %s fail (find duplicate key); cur_size: %d",
-                GetTxnId(txn), std::to_string(key.ToString()).c_str(), leaf_page->GetSize());
+      LOG_DEBUG("Txn %zu: Pessimistic Insert %s fail (find duplicate key); cur_size: %d", GetTxnId(txn),
+                std::to_string(key.ToString()).c_str(), leaf_page->GetSize());
     }
 
     ctx.write_set_.clear();
@@ -235,24 +241,14 @@ auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transact
   //   return res;
   // }
 
-  LOG_DEBUG("Txn %zu: leaf page %d is not safe, requrie split; cur_size: %d", GetTxnId(txn), ctx.write_set_.back().PageId(),
-            leaf_page->GetSize());
+  LOG_DEBUG("Txn %zu: leaf page %d is not safe, requrie split; cur_size: %d; key: %s; ctx write_set_ size: %lu",
+            GetTxnId(txn), ctx.write_set_.back().PageId(), leaf_page->GetSize(), std::to_string(key.ToString()).c_str(),
+            ctx.write_set_.size());
 
   // leaf_page is not safe (one step towards the full page)
   if (leaf_page->Insert(key, value, comparator_)) {
-    // int min_size = leaf_page->GetMinSize();
-    // int cur_size = leaf_page->GetSize();
-
-    // page_id_t new_page_id;
-    // BasicPageGuard new_page_guard = bpm_->NewPageGuarded(&new_page_id);
-    // auto new_page = new_page_guard.AsMut<LeafPage>();
-    // new_page->Init(parent_page_id, leaf_max_size_);
-    // new_page_guard.Drop();
-
-    // WritePageGuard new_guard = bpm_->FetchPageWrite(new_page_id);
-    // new_page = new_guard.AsMut<LeafPage>();
-
-    LOG_DEBUG("Txn %zu: (Split case) Insert %s succeed, now split the page; page_size: %d (leaf_max_size_: %d)", GetTxnId(txn), std::to_string(key.ToString()).c_str(), leaf_page->GetSize(), leaf_max_size_);
+    LOG_DEBUG("Txn %zu: (Split case) Insert %s succeed, now split the page; page_size: %d (leaf_max_size_: %d)",
+              GetTxnId(txn), std::to_string(key.ToString()).c_str(), leaf_page->GetSize(), leaf_max_size_);
 
     page_id_t new_page_id;
     LeafPage *new_page = NewLeafPage(ctx, &new_page_id, leaf_page->GetParentPageId());
@@ -272,7 +268,8 @@ auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value, Transact
     ctx.write_set_.pop_back();
     InsertInParent(pushed_key, std::move(new_guard), ctx);
   } else {
-    LOG_DEBUG("Txn %zu: (Split case) Insert %s fails, duplicate key is found", GetTxnId(txn), std::to_string(key.ToString()).c_str());
+    LOG_DEBUG("Txn %zu: (Split case) Insert %s fails, duplicate key is found", GetTxnId(txn),
+              std::to_string(key.ToString()).c_str());
   }
 
   // find duplicate key
@@ -480,7 +477,7 @@ void BPLUSTREE_TYPE::Remove(const KeyType &key, Transaction *txn) {
   Context ctx;
   (void)ctx;
 
-  LOG_DEBUG("Txn %zu: Remove | key %s", GetTxnId(txn), std::to_string(key.ToString()).c_str());
+  // LOG_DEBUG("Txn %zu: Remove | key %s", GetTxnId(txn), std::to_string(key.ToString()).c_str());
 
   bool optimistic = true;
   if (FindLeafPage(ctx, key, OperationType::DELETE, optimistic, txn)) {
@@ -514,11 +511,12 @@ void BPLUSTREE_TYPE::Remove(const KeyType &key, Transaction *txn) {
     return;
   }
 
-  RemoveLeafEntry(ctx, key, &page_id_to_index);
+  RemoveLeafEntry(ctx, key, &page_id_to_index, txn);
 }
 
 INDEX_TEMPLATE_ARGUMENTS
-void BPLUSTREE_TYPE::RemoveLeafEntry(Context &ctx, KeyType key, std::unordered_map<page_id_t, int> *page_id_to_index) {
+void BPLUSTREE_TYPE::RemoveLeafEntry(Context &ctx, KeyType key, std::unordered_map<page_id_t, int> *page_id_to_index,
+                                     Transaction *txn) {
   WritePageGuard cur_guard = std::move(ctx.write_set_.back());
   ctx.write_set_.pop_back();
 
@@ -529,6 +527,9 @@ void BPLUSTREE_TYPE::RemoveLeafEntry(Context &ctx, KeyType key, std::unordered_m
   if (!cur_leaf_page->Delete(key, comparator_)) {
     return;
   }
+
+  LOG_DEBUG("Txn %zu: Remove %s at page %d; cur page size: %d", GetTxnId(txn), std::to_string(key.ToString()).c_str(),
+            cur_leaf_page_id, cur_leaf_page->GetSize());
 
   // leaf page is the root page and it's empty, update the root_page_id_
   if (cur_leaf_page_id == ctx.root_page_id_ && cur_leaf_page->GetSize() == 0) {
