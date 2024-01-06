@@ -47,11 +47,10 @@ auto BPlusTreePage::GetMinSize() const -> int {
 
 // insert: true; delete: false;
 auto BPlusTreePage::IsSafe(OperationType op_type) const -> bool {
-  if (page_type_ == IndexPageType::INTERNAL_PAGE) {
-    return op_type == OperationType::INSERT ? GetSize() < GetMaxSize() : GetSize() > GetMinSize();
+  if (op_type == OperationType::INSERT) {
+    return page_type_ == IndexPageType::LEAF_PAGE ? GetSize() < GetMaxSize() - 1 : GetSize() < GetMaxSize();
   }
-  // page_type_ == IndexPageType::LEAF_PAGE
-  return op_type == OperationType::INSERT ? GetSize() < GetMaxSize() - 1 : GetSize() > GetMinSize();
+  return GetSize() > GetMinSize();
 }
 
 }  // namespace bustub
