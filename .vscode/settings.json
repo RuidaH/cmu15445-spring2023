@@ -74,5 +74,6 @@
         "iterator": "cpp",
         "memory_resource": "cpp",
         "source_location": "cpp"
-    }
+    },
+    "cmake.configureOnOpen": false
 }
