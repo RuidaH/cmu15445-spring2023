@@ -40,7 +40,8 @@ auto DeleteExecutor::Next(Tuple *tuple, RID *rid) -> bool {
     ++deleted_tuple_nums;
 
     for (auto& index_info : indexes_info_) {
-      index_info->index_->DeleteEntry(*tuple, *rid, exec_ctx_->GetTransaction());
+      Tuple key = tuple->KeyFromTuple(table_info_->schema_, index_info->key_schema_, index_info->index_->GetKeyAttrs());
+      index_info->index_->DeleteEntry(key, *rid, exec_ctx_->GetTransaction());
     }
   }
 

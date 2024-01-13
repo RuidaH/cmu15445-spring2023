@@ -58,14 +58,16 @@ auto UpdateExecutor::Next(Tuple *tuple, RID *rid) -> bool {
     *rid = result.value();
     ++update_tuple_nums;
 
-    // LOG_DEBUG("insert tuple: %s", tuple->ToString(&child_executor_->GetOutputSchema()).c_str());
-    // LOG_DEBUG("rid of inserted tuple: %s", rid->ToString().c_str());
-    // LOG_DEBUG("only child of the update node:\n %s\n", plan_->GetChildPlan()->ToString().c_str());
+    LOG_DEBUG("original tuple: %s", tuple->ToString(&child_executor_->GetOutputSchema()).c_str());
+    LOG_DEBUG("updated tuple: %s", updated_tuple.ToString(&child_executor_->GetOutputSchema()).c_str());
+    LOG_DEBUG("rid of inserted tuple: %s", rid->ToString().c_str());
+    LOG_DEBUG("only child of the update node:\n %s\n", plan_->GetChildPlan()->ToString().c_str());
 
     for (auto& index_info : indexes_info_) {
-      index_info->index_->DeleteEntry(*tuple, *rid, exec_ctx_->GetTransaction());
-      bool inserted = index_info->index_->InsertEntry(*tuple, *rid, exec_ctx_->GetTransaction());
-      if (!inserted) {
+      Tuple removed_key = tuple->KeyFromTuple(table_info_->schema_, index_info->key_schema_, index_info->index_->GetKeyAttrs());
+      Tuple updated_key = updated_tuple.KeyFromTuple(table_info_->schema_, index_info->key_schema_, index_info->index_->GetKeyAttrs());
+      index_info->index_->DeleteEntry(removed_key, *rid, exec_ctx_->GetTransaction());
+      if (!index_info->index_->InsertEntry(updated_key, *rid, exec_ctx_->GetTransaction())) {
         return false;
       }
     }

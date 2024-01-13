@@ -41,6 +41,8 @@ class BPlusTreeIndex : public Index {
 
   auto GetEndIterator() -> INDEXITERATOR_TYPE;
 
+  auto IsEmpty() -> bool { return container_->IsEmpty(); }
+
  protected:
   // comparator for key
   KeyComparator comparator_;

@@ -49,7 +49,8 @@ auto InsertExecutor::Next(Tuple *tuple, RID *rid) -> bool {
     // LOG_DEBUG("rid of inserted tuple: %s\n", rid->ToString().c_str());
 
     for (auto& index_info : indexes_info_) {
-      if (!index_info->index_->InsertEntry(*tuple, *rid, exec_ctx_->GetTransaction())) {
+      Tuple key = tuple->KeyFromTuple(table_info_->schema_, index_info->key_schema_, index_info->index_->GetKeyAttrs());
+      if (!index_info->index_->InsertEntry(key, *rid, exec_ctx_->GetTransaction())) {
         return false;
       }
     }
