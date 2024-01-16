@@ -56,6 +56,7 @@ class ArithmeticExpression : public AbstractExpression {
 
   auto EvaluateJoin(const Tuple *left_tuple, const Schema &left_schema, const Tuple *right_tuple,
                     const Schema &right_schema) const -> Value override {
+    // std::cout << "Arithemtic Expression" << std::endl;
     Value lhs = GetChildAt(0)->EvaluateJoin(left_tuple, left_schema, right_tuple, right_schema);
     Value rhs = GetChildAt(1)->EvaluateJoin(left_tuple, left_schema, right_tuple, right_schema);
     auto res = PerformComputation(lhs, rhs);

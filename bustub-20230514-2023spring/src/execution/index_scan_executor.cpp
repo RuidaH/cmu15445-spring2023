@@ -15,7 +15,7 @@ namespace bustub {
 IndexScanExecutor::IndexScanExecutor(ExecutorContext *exec_ctx, const IndexScanPlanNode *plan)
     : AbstractExecutor(exec_ctx), plan_(plan) {}
 
-// 索引创建在之前就已经确定好了
+// 索引创建不包含在此阶段
 
 // 在 Init 阶段拿到 B+ 树索引的迭代器
 void IndexScanExecutor::Init() { 
@@ -24,6 +24,7 @@ void IndexScanExecutor::Init() {
   table_info_ = catalog->GetTable(index_info_->table_name_);
   BPlusTreeIndexForTwoIntegerColumn* b_plus_tree_index = dynamic_cast<BPlusTreeIndexForTwoIntegerColumn *>(index_info_->index_.get());
   
+  // 看看还有没有什么更好的解决办法
   if (b_plus_tree_index->IsEmpty()) {
     tree_iter_ = b_plus_tree_index->GetEndIterator();
   } else {
