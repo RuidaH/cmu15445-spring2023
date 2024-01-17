@@ -27,43 +27,46 @@ NestedLoopJoinExecutor::NestedLoopJoinExecutor(ExecutorContext *exec_ctx, const 
   }
 }
 
-/**
- * 当前方法: 目前就实现在 Init 阶段提前把结果存储在一个 list 中; 在 Next 阶段直接遍历 list 得到结果
- *  因为测试的数据量不大, 数据可以全量存储, 所以实现比较简单
- * To_do: 另一种是在 Next 阶段才去遍历左表和右表的数据, 然后比较完之后返回结果、
- * 
- * Update: Nested Loop 这里不能作为 pipeline breaker, 也就是说不能在 Init() 生成所有的结果;
- *  在 execution_engine.h 中新增了 PerformChecks, 
- *  这里要求 NestedLoopJoin 左子节点每次调用 Next(), 右子节点都需要再 Init() 一次, 因此并非 Pipeline Breaker
- * 
- * 
- **/ 
-
-// 在预处理阶段就获取最后的结果, Next 再使用 TableIterator 对最后新创建的表进行遍历
 void NestedLoopJoinExecutor::Init() {
   left_executor_->Init();
   right_executor_->Init();
-  joined_tuples_.clear();
+
+  left_tuple_ = new Tuple();
+  right_tuple_ = new Tuple();
+
+  RID rid;
+  left_executor_->Next(left_tuple_, &rid);
   joined_ = false;
+}
 
-  auto left_table_schema = plan_->GetLeftPlan()->OutputSchema();  // smaller table
-  auto right_table_schema = plan_->GetRightPlan()->OutputSchema();
-
-  Tuple left_tuple, right_tuple;
-  RID left_rid, right_rid;
-  const AbstractExpressionRef &predicate = plan_->Predicate();
-  while (left_executor_->Next(&left_tuple, &left_rid)) {
-    while (right_executor_->Next(&right_tuple, &right_rid)) {
-      Value check_equal = predicate->EvaluateJoin(&left_tuple, left_table_schema, &right_tuple, right_table_schema);
-      if (check_equal.CompareEquals({TypeId::BOOLEAN, 1}) == CmpBool::CmpTrue) {
-        OutputTuple(left_table_schema, right_table_schema, &left_tuple, &right_tuple);
-        joined_ = true;
+auto NestedLoopJoinExecutor::Next(Tuple *tuple, RID *rid) -> bool {
+  auto &predicate = plan_->Predicate();
+  auto &left_table_schema = plan_->GetLeftPlan()->OutputSchema();  // smaller table
+  auto &right_table_schema = plan_->GetRightPlan()->OutputSchema();
+  
+  while (true) {
+    while (right_executor_->Next(right_tuple_, rid)) {
+      Value check_equal = predicate->EvaluateJoin(left_tuple_, left_table_schema, right_tuple_, right_table_schema);
+      if (check_equal.GetAs<bool>()) {
+        OutputTuple(left_table_schema, right_table_schema, tuple, true);
+        return true;
       }
     }
 
-    // 等到最后在判断是否为 left join 来决定是否加入 tuple (防止重复加载相同的 tuple)
     if (plan_->GetJoinType() == JoinType::LEFT && !joined_) {
-      OutputTuple(left_table_schema, right_table_schema, &left_tuple, nullptr);
+      OutputTuple(left_table_schema, right_table_schema, tuple, false);
+      right_executor_->Init();
+      return true;
+    }
+
+    if (!left_executor_->Next(left_tuple_, rid)) {
+      delete left_tuple_;
+      left_tuple_ = nullptr;
+
+      delete right_tuple_;
+      right_tuple_ = nullptr;
+
+      return false;
     }
 
     right_executor_->Init();
@@ -72,41 +75,98 @@ void NestedLoopJoinExecutor::Init() {
 
 }
 
-void NestedLoopJoinExecutor::OutputTuple(const Schema &left_table_schema, const Schema &right_table_schema, Tuple *left_tuple, Tuple *right_tuple) {
+void NestedLoopJoinExecutor::OutputTuple(const Schema &left_table_schema, const Schema &right_table_schema, Tuple *tuple, bool matched) {
   std::vector<Value> new_tuple_values;
   new_tuple_values.reserve(GetOutputSchema().GetColumnCount());  // 提前分配好固定大小的内存空间, 避免动态扩容 (很聪明的优化)
 
   for (uint32_t i = 0; i < left_table_schema.GetColumnCount(); ++i) {
-    new_tuple_values.emplace_back(left_tuple->GetValue(&left_table_schema, i));
+    new_tuple_values.emplace_back(left_tuple_->GetValue(&left_table_schema, i));
   }
 
-  if (right_tuple == nullptr) {
+  if (!matched) {
     for (uint32_t i = 0; i < right_table_schema.GetColumnCount(); ++i) {
       auto type_id = right_table_schema.GetColumn(i).GetType();
       new_tuple_values.emplace_back(ValueFactory::GetNullValueByType(type_id));
     }
   } else {
     for (uint32_t i = 0; i < right_table_schema.GetColumnCount(); ++i) {
-      new_tuple_values.emplace_back(right_tuple->GetValue(&right_table_schema, i));
+      new_tuple_values.emplace_back(right_tuple_->GetValue(&right_table_schema, i));
     }
-  }
-  
-  joined_tuples_.emplace_back(new_tuple_values, &GetOutputSchema());
-}
-
-auto NestedLoopJoinExecutor::Next(Tuple *tuple, RID *rid) -> bool {
-  if (joined_tuples_.empty()) {
-    return false;
+    
   }
 
-  *tuple = std::move(joined_tuples_.front());
-  joined_tuples_.pop_front();
-  return true;
+  joined_ = true;
+  *tuple = Tuple{new_tuple_values, &GetOutputSchema()};
 }
 
 }  // namespace bustub
 
-// std::cout << GetOutputSchema().ToString() << std::endl;
-// std::cout << "left tuple: " << left_tuple.ToString(&left_plan->OutputSchema()) << std::endl;
-// std::cout << "right tuple: " << right_tuple.ToString(&right_plan->OutputSchema()) << std::endl;
-// std::cout << "Value: " << check_equal.ToString() << " with predicate " << predicate->ToString() << std::endl << std::endl;
+/** 
+ * 下面的解法是在 Init() 阶段获取结果, 因为测试的数据量不大, 所以可以直接保存全量数据, 但是在实际生产环境中该方法不现实. 
+ *  并且这一部分 proj 也没有特别表明属于 pipeline breaker, 因此最好还是将遍历放在 Next() 阶段
+ **/
+
+// void NestedLoopJoinExecutor::Init() {
+//   left_executor_->Init();
+//   right_executor_->Init();
+//   joined_tuples_.clear();
+//   joined_ = false;
+
+//   auto left_table_schema = plan_->GetLeftPlan()->OutputSchema();  // smaller table
+//   auto right_table_schema = plan_->GetRightPlan()->OutputSchema();
+
+//   Tuple left_tuple, right_tuple;
+//   RID left_rid, right_rid;
+//   const AbstractExpressionRef &predicate = plan_->Predicate();
+//   while (left_executor_->Next(&left_tuple, &left_rid)) {
+//     while (right_executor_->Next(&right_tuple, &right_rid)) {
+//       Value check_equal = predicate->EvaluateJoin(&left_tuple, left_table_schema, &right_tuple, right_table_schema);
+//       if (check_equal.CompareEquals({TypeId::BOOLEAN, 1}) == CmpBool::CmpTrue) {
+//         OutputTuple(left_table_schema, right_table_schema, &left_tuple, &right_tuple);
+//         joined_ = true;
+//       }
+//     }
+
+//     // 等到最后在判断是否为 left join 来决定是否加入 tuple (防止重复加载相同的 tuple)
+//     if (plan_->GetJoinType() == JoinType::LEFT && !joined_) {
+//       OutputTuple(left_table_schema, right_table_schema, &left_tuple, nullptr);
+//     }
+
+//     right_executor_->Init();
+//     joined_ = false;
+//   }
+
+// }
+
+// void NestedLoopJoinExecutor::OutputTuple(const Schema &left_table_schema, const Schema &right_table_schema, Tuple *left_tuple, Tuple *right_tuple) {
+//   std::vector<Value> new_tuple_values;
+//   new_tuple_values.reserve(GetOutputSchema().GetColumnCount());  // 提前分配好固定大小的内存空间, 避免动态扩容 (很聪明的优化)
+
+//   for (uint32_t i = 0; i < left_table_schema.GetColumnCount(); ++i) {
+//     new_tuple_values.emplace_back(left_tuple->GetValue(&left_table_schema, i));
+//   }
+
+//   if (right_tuple == nullptr) {
+//     for (uint32_t i = 0; i < right_table_schema.GetColumnCount(); ++i) {
+//       auto type_id = right_table_schema.GetColumn(i).GetType();
+//       new_tuple_values.emplace_back(ValueFactory::GetNullValueByType(type_id));
+//     }
+//   } else {
+//     for (uint32_t i = 0; i < right_table_schema.GetColumnCount(); ++i) {
+//       new_tuple_values.emplace_back(right_tuple->GetValue(&right_table_schema, i));
+//     }
+//   }
+
+//   joined_tuples_.emplace_back(new_tuple_values, &GetOutputSchema());
+// }
+
+
+// auto NestedLoopJoinExecutor::Next(Tuple *tuple, RID *rid) -> bool {
+//   if (joined_tuples_.empty()) {
+//     return false;
+//   }
+
+//   *tuple = std::move(joined_tuples_.front());
+//   joined_tuples_.pop_front();
+//   return true;
+// }

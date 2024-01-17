@@ -78,6 +78,9 @@ auto ProcessExtraOptions(const std::string &sql, bustub::BustubInstance &instanc
       } else if (opt == "ensure:hash_join") {
         if (bustub::StringUtil::Split(result.str(), "HashJoin").size() != 2 &&
             !bustub::StringUtil::Contains(result.str(), "Filter")) {
+          // fmt::print("result str: {}\n", result.str());  // 这里打印出来的是 binder + planer + optimiser
+          // fmt::print("check result: {}\n", bustub::StringUtil::Split(result.str(), "HashJoin").size() != 2);
+          // fmt::print("check container: {}\n", bustub::StringUtil::Contains(result.str(), "Filter"));
           fmt::print("HashJoin not found\n");
           return false;
         }
