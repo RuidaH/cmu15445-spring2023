@@ -274,6 +274,8 @@ auto BustubInstance::ExecuteSqlTxn(const std::string &sql, ResultWriter &writer,
     bustub::Planner planner(*catalog_);
     planner.PlanQuery(*statement);
 
+    std::cout << "plan of the sql: \n" << planner.plan_->ToString() << std::endl << std::endl;
+
     // Optimize the query.
     bustub::Optimizer optimizer(*catalog_, IsForceStarterRule());
     auto optimized_plan = optimizer.Optimize(planner.plan_);

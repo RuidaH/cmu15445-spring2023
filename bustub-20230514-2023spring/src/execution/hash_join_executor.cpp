@@ -41,6 +41,8 @@ void HashJoinExecutor::Init() {
     JoinKey left_join_key = GenerateJoinKey(plan_->GetLeftPlan(), plan_->LeftJoinKeyExpressions(), tuple);
     InsertJoinKey(left_join_key, tuple);
   }
+
+  // 这里会不会多次被初始化, 如果会的话就加上一个 build_ 来防止
 }
 
 auto HashJoinExecutor::Next(Tuple *tuple, RID *rid) -> bool {

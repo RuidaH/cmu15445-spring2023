@@ -14,6 +14,7 @@
 
 #include <memory>
 #include <vector>
+#include <set>
 
 #include "execution/executor_context.h"
 #include "execution/executors/abstract_executor.h"
@@ -52,5 +53,9 @@ class SortExecutor : public AbstractExecutor {
  private:
   /** The sort plan node to be executed */
   const SortPlanNode *plan_;
+  std::unique_ptr<AbstractExecutor> child_executor_;
+  std::vector<std::pair<Tuple, RID>> ordered_tuples_;
+  uint8_t cur_;
+  bool sorted_;
 };
 }  // namespace bustub

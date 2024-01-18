@@ -31,6 +31,7 @@ class ConstantValueExpression : public AbstractExpression {
 
   auto EvaluateJoin(const Tuple *left_tuple, const Schema &left_schema, const Tuple *right_tuple,
                     const Schema &right_schema) const -> Value override {
+    // std::cout << "Constant Value Expression: " << val_.ToString() << std::endl;
     return val_;
   }
 
