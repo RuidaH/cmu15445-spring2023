@@ -40,18 +40,6 @@ void SortExecutor::Init() {
       return order_by.first == OrderByType::DEFAULT || order_by.first == OrderByType::ASC
               ? val1.CompareLessThan(val2) == CmpBool::CmpTrue
               : val1.CompareGreaterThan(val2) == CmpBool::CmpTrue;
-
-      // switch (order_by.first){
-      //   case OrderByType::DEFAULT:
-      //   case OrderByType::ASC:
-      //     return val1.CompareLessThan(val2) == CmpBool::CmpTrue;
-      //     break;
-      //   case OrderByType::DESC:
-      //     return val1.CompareGreaterThan(val2) == CmpBool::CmpTrue;
-      //     break;
-      //   default:
-      //     break;
-      // }
     }
     return false; // return false if they equal in every val (namely themself)
   };
