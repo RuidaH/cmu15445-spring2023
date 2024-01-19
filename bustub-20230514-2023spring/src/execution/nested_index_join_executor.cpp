@@ -16,7 +16,7 @@ namespace bustub {
 
 NestIndexJoinExecutor::NestIndexJoinExecutor(ExecutorContext *exec_ctx, const NestedIndexJoinPlanNode *plan,
                                              std::unique_ptr<AbstractExecutor> &&child_executor)
-    : AbstractExecutor(exec_ctx), plan_(plan), child_executor_(std::move(child_executor)) {
+    : AbstractExecutor(exec_ctx) {
   if (!(plan->GetJoinType() == JoinType::LEFT || plan->GetJoinType() == JoinType::INNER)) {
     // Note for 2023 Spring: You ONLY need to implement left join and inner join.
     throw bustub::NotImplementedException(fmt::format("join type {} not supported", plan->GetJoinType()));
@@ -26,16 +26,15 @@ NestIndexJoinExecutor::NestIndexJoinExecutor(ExecutorContext *exec_ctx, const Ne
 // 这一部分 2023 spring 好像不要求写, 暂时放掉
 
 void NestIndexJoinExecutor::Init() {
-  joined_ = false;
-  std::cout << plan_->ToString() << std::endl;
+  // joined_ = false;
+  // std::cout << plan_->ToString() << std::endl;
 }
 
-void NestIndexJoinExecutor::OutputTuple(const Schema &left_table_schema, const Schema &right_table_schema, Tuple *left_tuple, Tuple *right_tuple) {
+void NestIndexJoinExecutor::OutputTuple(const Schema &left_table_schema, const Schema &right_table_schema,
+                                        Tuple *left_tuple, Tuple *right_tuple) {
   return;
 }
 
-auto NestIndexJoinExecutor::Next(Tuple *tuple, RID *rid) -> bool {
-  return false;
-}
+auto NestIndexJoinExecutor::Next(Tuple *tuple, RID *rid) -> bool { return false; }
 
 }  // namespace bustub

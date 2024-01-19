@@ -13,8 +13,9 @@
 #pragma once
 
 #include <memory>
-#include <vector>
 #include <set>
+#include <utility>
+#include <vector>
 
 #include "execution/executor_context.h"
 #include "execution/executors/abstract_executor.h"
@@ -56,6 +57,6 @@ class SortExecutor : public AbstractExecutor {
   std::unique_ptr<AbstractExecutor> child_executor_;
   std::vector<std::pair<Tuple, RID>> ordered_tuples_;
   uint8_t cur_;
-  bool sorted_;
+  bool sorted_{false};
 };
 }  // namespace bustub

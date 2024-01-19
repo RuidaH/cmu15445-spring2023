@@ -14,7 +14,15 @@
 
 namespace bustub {
 
-SeqScanExecutor::SeqScanExecutor(ExecutorContext *exec_ctx, const SeqScanPlanNode *plan) : AbstractExecutor(exec_ctx), plan_(plan) {}
+SeqScanExecutor::SeqScanExecutor(ExecutorContext *exec_ctx, const SeqScanPlanNode *plan)
+    : AbstractExecutor(exec_ctx), plan_(plan) {}
+
+SeqScanExecutor::~SeqScanExecutor() {
+  if (iter_ != nullptr) {
+    delete iter_;
+    iter_ = nullptr;
+  }
+}
 
 void SeqScanExecutor::Init() {
   auto catalog = exec_ctx_->GetCatalog();
@@ -26,10 +34,13 @@ auto SeqScanExecutor::Next(Tuple *tuple, RID *rid) -> bool {
   // keep iterating through the table until you find a non-deleted tuple
   while (true) {
     if (iter_->IsEnd()) {
+      delete iter_;
+      iter_ = nullptr;
+
       return false;
     }
 
-    std::pair<TupleMeta, Tuple>&& temp_tuple = iter_->GetTuple();
+    std::pair<TupleMeta, Tuple> &&temp_tuple = iter_->GetTuple();
     if (!temp_tuple.first.is_deleted_) {
       *tuple = std::move(temp_tuple.second);
       *rid = iter_->GetRID();

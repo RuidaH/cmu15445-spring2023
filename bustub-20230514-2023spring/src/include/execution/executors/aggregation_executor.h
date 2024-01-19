@@ -73,8 +73,8 @@ class SimpleAggregationHashTable {
    */
   void CombineAggregateValues(AggregateValue *result, const AggregateValue &input) {
     for (uint32_t i = 0; i < agg_exprs_.size(); i++) {
-      Value& cur_aggregate = result->aggregates_[i];
-      const Value& update = input.aggregates_[i];
+      Value &cur_aggregate = result->aggregates_[i];
+      const Value &update = input.aggregates_[i];
 
       if (agg_types_[i] == AggregationType::CountStarAggregate) {
         cur_aggregate = cur_aggregate.Add({TypeId::INTEGER, 1});
@@ -228,6 +228,6 @@ class AggregationExecutor : public AbstractExecutor {
   SimpleAggregationHashTable aht_;
   /** Simple aggregation hash table iterator */
   SimpleAggregationHashTable::Iterator aht_iterator_;
-  int num_of_tuples_;
+  int num_of_tuples_{0};
 };
 }  // namespace bustub

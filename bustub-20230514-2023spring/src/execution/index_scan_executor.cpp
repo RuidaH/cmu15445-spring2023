@@ -18,20 +18,14 @@ IndexScanExecutor::IndexScanExecutor(ExecutorContext *exec_ctx, const IndexScanP
 // 索引创建不包含在此阶段
 
 // 在 Init 阶段拿到 B+ 树索引的迭代器
-void IndexScanExecutor::Init() { 
+void IndexScanExecutor::Init() {
   auto catalog = exec_ctx_->GetCatalog();
   index_info_ = catalog->GetIndex(plan_->GetIndexOid());
   table_info_ = catalog->GetTable(index_info_->table_name_);
-  BPlusTreeIndexForTwoIntegerColumn* b_plus_tree_index = dynamic_cast<BPlusTreeIndexForTwoIntegerColumn *>(index_info_->index_.get());
-  
-  // 看看还有没有什么更好的解决办法
-  if (b_plus_tree_index->IsEmpty()) {
-    tree_iter_ = b_plus_tree_index->GetEndIterator();
-  } else {
-    tree_iter_ = b_plus_tree_index->GetBeginIterator();
-  }
+  auto *b_plus_tree_index = dynamic_cast<BPlusTreeIndexForTwoIntegerColumn *>(index_info_->index_.get());
+
+  tree_iter_ = b_plus_tree_index->GetBeginIterator();
   tree_end_iter_ = b_plus_tree_index->GetEndIterator();
-  
 }
 
 // 在 Next 阶段使用迭代器遍历并返回结果
@@ -42,7 +36,7 @@ auto IndexScanExecutor::Next(Tuple *tuple, RID *rid) -> bool {
     }
 
     *rid = (*tree_iter_).second;
-    std::pair<TupleMeta, Tuple>&& tuple_pair = table_info_->table_->GetTuple(*rid);
+    std::pair<TupleMeta, Tuple> &&tuple_pair = table_info_->table_->GetTuple(*rid);
     if (!tuple_pair.first.is_deleted_) {
       *tuple = std::move(tuple_pair.second);
       ++tree_iter_;

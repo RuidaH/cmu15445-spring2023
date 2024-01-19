@@ -18,10 +18,20 @@ namespace bustub {
 HashJoinExecutor::HashJoinExecutor(ExecutorContext *exec_ctx, const HashJoinPlanNode *plan,
                                    std::unique_ptr<AbstractExecutor> &&left_child,
                                    std::unique_ptr<AbstractExecutor> &&right_child)
-    : AbstractExecutor(exec_ctx), plan_(plan), left_executor_(std::move(left_child)), right_executor_(std::move(right_child)) {
+    : AbstractExecutor(exec_ctx),
+      plan_(plan),
+      left_executor_(std::move(left_child)),
+      right_executor_(std::move(right_child)) {
   if (!(plan->GetJoinType() == JoinType::LEFT || plan->GetJoinType() == JoinType::INNER)) {
     // Note for 2023 Spring: You ONLY need to implement left join and inner join.
     throw bustub::NotImplementedException(fmt::format("join type {} not supported", plan->GetJoinType()));
+  }
+}
+
+HashJoinExecutor::~HashJoinExecutor() {
+  if (right_tuple_ != nullptr) {
+    delete right_tuple_;
+    right_tuple_ = nullptr;
   }
 }
 
@@ -52,7 +62,6 @@ auto HashJoinExecutor::Next(Tuple *tuple, RID *rid) -> bool {
   auto right_plan = plan_->GetRightPlan();
 
   while (true) {
-
     if (!tuple_bucket_.has_value()) {
       bool status = right_executor_->Next(right_tuple_, rid);
       if (!status) {
@@ -63,9 +72,8 @@ auto HashJoinExecutor::Next(Tuple *tuple, RID *rid) -> bool {
         tuple_bucket_ = GetTupleBucket(join_key);
         if (!tuple_bucket_.has_value()) {
           continue;  // right_tuple_ doesn't find the matched left tuples, iterate to the next right tuple
-        } else {
-          not_joined_.erase(join_key);  // matches, those left tuples won't be used in left join
         }
+        not_joined_.erase(join_key);  // matches, those left tuples won't be used in left join
       }
     }
 
@@ -77,7 +85,7 @@ auto HashJoinExecutor::Next(Tuple *tuple, RID *rid) -> bool {
       } else {
         OutputTuple(left_table_schema, right_table_schema, &left_tuple, tuple, true);
       }
-      
+
       if (tuple_bucket_.value().empty()) {
         tuple_bucket_ = std::nullopt;
       }
@@ -92,17 +100,19 @@ auto HashJoinExecutor::Next(Tuple *tuple, RID *rid) -> bool {
         tuple_bucket_ = GetTupleBucket(*iter);
         not_joined_.erase(iter);
         continue;  // enter next loop to deal with the rest of the left tuple
-      } else {
-        return false;
       }
+      delete right_tuple_;
+      right_tuple_ = nullptr;
+      return false;
     }
-
   }
 }
 
-void HashJoinExecutor::OutputTuple(const Schema &left_table_schema, const Schema &right_table_schema, Tuple *left_tuple, Tuple *tuple, bool matched) {
+void HashJoinExecutor::OutputTuple(const Schema &left_table_schema, const Schema &right_table_schema, Tuple *left_tuple,
+                                   Tuple *tuple, bool matched) {
   std::vector<Value> new_tuple_values;
-  new_tuple_values.reserve(GetOutputSchema().GetColumnCount());  // 提前分配好固定大小的内存空间, 避免动态扩容 (很聪明的优化)
+  new_tuple_values.reserve(
+      GetOutputSchema().GetColumnCount());  // 提前分配好固定大小的内存空间, 避免动态扩容 (很聪明的优化)
 
   for (uint32_t i = 0; i < left_table_schema.GetColumnCount(); ++i) {
     new_tuple_values.emplace_back(left_tuple->GetValue(&left_table_schema, i));
@@ -117,15 +127,8 @@ void HashJoinExecutor::OutputTuple(const Schema &left_table_schema, const Schema
     for (uint32_t i = 0; i < right_table_schema.GetColumnCount(); ++i) {
       new_tuple_values.emplace_back(right_tuple_->GetValue(&right_table_schema, i));
     }
-    
   }
 
   *tuple = {new_tuple_values, &GetOutputSchema()};  // avoid copy
 }
 }  // namespace bustub
-
-/**
- * Comparison Expression
- * Column Value Expression
- * Column Value Expression
-*/

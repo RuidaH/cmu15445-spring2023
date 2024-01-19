@@ -36,6 +36,8 @@ class SeqScanExecutor : public AbstractExecutor {
   /** Initialize the sequential scan */
   void Init() override;
 
+  ~SeqScanExecutor() override;
+
   /**
    * Yield the next tuple from the sequential scan.
    * @param[out] tuple The next tuple produced by the scan

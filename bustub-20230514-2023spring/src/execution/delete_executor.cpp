@@ -25,11 +25,11 @@ void DeleteExecutor::Init() {
   table_info_ = catalog->GetTable(plan_->TableOid());
   indexes_info_ = catalog->GetTableIndexes(table_info_->name_);
   child_executor_->Init();
-  outputted = false;
+  outputted_ = false;
 }
 
 auto DeleteExecutor::Next(Tuple *tuple, RID *rid) -> bool {
-  if (outputted) {
+  if (outputted_) {
     return false;
   }
 
@@ -39,16 +39,16 @@ auto DeleteExecutor::Next(Tuple *tuple, RID *rid) -> bool {
     table_info_->table_->UpdateTupleMeta(tuple_meta, *rid);
     ++deleted_tuple_nums;
 
-    for (auto& index_info : indexes_info_) {
+    for (auto &index_info : indexes_info_) {
       Tuple key = tuple->KeyFromTuple(table_info_->schema_, index_info->key_schema_, index_info->index_->GetKeyAttrs());
       index_info->index_->DeleteEntry(key, *rid, exec_ctx_->GetTransaction());
     }
   }
 
-  std::vector<Value> values {{TypeId::INTEGER, deleted_tuple_nums}};
+  std::vector<Value> values{{TypeId::INTEGER, deleted_tuple_nums}};
   Tuple output_tuple(values, &GetOutputSchema());
   *tuple = output_tuple;
-  outputted = true;
+  outputted_ = true;
   return true;
 }
 

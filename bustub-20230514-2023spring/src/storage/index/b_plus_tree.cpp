@@ -627,7 +627,7 @@ auto BPLUSTREE_TYPE::Begin() -> INDEXITERATOR_TYPE {
   ReadPageGuard header_guard = bpm_->FetchPageRead(header_page_id_);
   auto header_page = header_guard.As<BPlusTreeHeaderPage>();
   if (header_page->root_page_id_ == INVALID_PAGE_ID) {
-    throw std::runtime_error("B+ tree is empty");
+    return End();
   }
 
   ReadPageGuard guard = bpm_->FetchPageRead(header_page->root_page_id_);

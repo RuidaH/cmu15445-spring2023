@@ -17,13 +17,12 @@
 namespace bustub {
 
 AggregationExecutor::AggregationExecutor(ExecutorContext *exec_ctx, const AggregationPlanNode *plan,
-                                         std::unique_ptr<AbstractExecutor> &&child): 
-    AbstractExecutor(exec_ctx), 
-    plan_(plan), 
-    child_(std::move(child)), 
-    aht_(plan_->aggregates_, plan_->agg_types_), 
-    aht_iterator_(aht_.Begin()),
-    num_of_tuples_(0) {}
+                                         std::unique_ptr<AbstractExecutor> &&child)
+    : AbstractExecutor(exec_ctx),
+      plan_(plan),
+      child_(std::move(child)),
+      aht_(plan_->aggregates_, plan_->agg_types_),
+      aht_iterator_(aht_.Begin()) {}
 
 void AggregationExecutor::Init() {
   // LOG_DEBUG("plan->group by size(): %zu", plan_->GetGroupBys().size());

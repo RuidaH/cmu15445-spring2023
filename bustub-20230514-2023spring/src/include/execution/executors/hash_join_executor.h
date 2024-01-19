@@ -12,11 +12,12 @@
 
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
-#include <functional>
 
 #include "common/util/hash_util.h"
 #include "container/hash/hash_function.h"
@@ -41,7 +42,7 @@ struct JoinKey {
   }
 };
 
-}
+}  // namespace bustub
 
 namespace std {
 /** Implements std::hash on JoinKey */
@@ -57,7 +58,7 @@ struct hash<bustub::JoinKey> {
     return curr_hash;
   }
 };
-}
+}  // namespace std
 
 namespace bustub {
 
@@ -83,6 +84,8 @@ class HashJoinExecutor : public AbstractExecutor {
   /** Initialize the join */
   void Init() override;
 
+  ~HashJoinExecutor() override;
+
   /**
    * Yield the next tuple from the join.
    * @param[out] tuple The next tuple produced by the join.
@@ -94,7 +97,7 @@ class HashJoinExecutor : public AbstractExecutor {
   /** @return The output schema for the join */
   auto GetOutputSchema() const -> const Schema & override { return plan_->OutputSchema(); };
 
-  void InsertJoinKey(const JoinKey& join_key, Tuple& tuple) {
+  void InsertJoinKey(const JoinKey &join_key, Tuple &tuple) {
     not_joined_.insert(join_key);
     if (ht_.count(join_key) == 0) {
       ht_.emplace(join_key, TupleBucket{{tuple}});  // 这里用 emplace 可以提高效率
@@ -104,7 +107,7 @@ class HashJoinExecutor : public AbstractExecutor {
   }
 
   // std::unordered_map<JoinKey, TupleBucket>::const_iterator
-  auto GetTupleBucket(const JoinKey& join_key) -> std::optional<std::vector<Tuple>> {
+  auto GetTupleBucket(const JoinKey &join_key) -> std::optional<std::vector<Tuple>> {
     auto iter = ht_.find(join_key);
     if (iter != ht_.end()) {
       return iter->second.tuple_bucket_;
@@ -112,7 +115,8 @@ class HashJoinExecutor : public AbstractExecutor {
     return std::nullopt;
   }
 
-  auto GenerateJoinKey(AbstractPlanNodeRef plan, const std::vector<AbstractExpressionRef> & exprs, Tuple& tuple) -> JoinKey {
+  auto GenerateJoinKey(const AbstractPlanNodeRef &plan, const std::vector<AbstractExpressionRef> &exprs, Tuple &tuple)
+      -> JoinKey {
     JoinKey join_keys;
     for (auto &expr : exprs) {
       // std::cout << expr->Evaluate(&tuple, left_plan->OutputSchema()).ToString() << std::endl;
@@ -123,7 +127,8 @@ class HashJoinExecutor : public AbstractExecutor {
   }
 
  private:
-  void OutputTuple(const Schema &left_table_schema, const Schema &right_table_schema, Tuple *left_tuple, Tuple *tuple, bool matched);
+  void OutputTuple(const Schema &left_table_schema, const Schema &right_table_schema, Tuple *left_tuple, Tuple *tuple,
+                   bool matched);
 
   /** The NestedLoopJoin plan node to be executed. */
   const HashJoinPlanNode *plan_;

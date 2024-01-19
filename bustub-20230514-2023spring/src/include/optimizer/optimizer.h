@@ -10,8 +10,8 @@
 #include "catalog/catalog.h"
 #include "concurrency/transaction.h"
 #include "execution/expressions/abstract_expression.h"
-#include "execution/plans/abstract_plan.h"
 #include "execution/expressions/comparison_expression.h"
+#include "execution/plans/abstract_plan.h"
 
 namespace bustub {
 
@@ -102,7 +102,8 @@ class Optimizer {
    */
   auto EstimatedCardinality(const std::string &table_name) -> std::optional<size_t>;
 
-  void OutputExpresions(const ComparisonExpression * expr, std::vector<AbstractExpressionRef>& left_exprs, std::vector<AbstractExpressionRef>& right_exprs);
+  void OutputExpresions(const ComparisonExpression *expr, std::vector<AbstractExpressionRef> &left_exprs,
+                        std::vector<AbstractExpressionRef> &right_exprs);
 
   /** Catalog will be used during the planning process. USERS SHOULD ENSURE IT OUTLIVES
    * OPTIMIZER, otherwise it's a dangling reference.
