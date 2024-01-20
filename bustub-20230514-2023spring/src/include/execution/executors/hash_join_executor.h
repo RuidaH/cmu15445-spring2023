@@ -84,8 +84,6 @@ class HashJoinExecutor : public AbstractExecutor {
   /** Initialize the join */
   void Init() override;
 
-  ~HashJoinExecutor() override;
-
   /**
    * Yield the next tuple from the join.
    * @param[out] tuple The next tuple produced by the join.
@@ -134,11 +132,16 @@ class HashJoinExecutor : public AbstractExecutor {
   const HashJoinPlanNode *plan_;
   std::unique_ptr<AbstractExecutor> left_executor_;
   std::unique_ptr<AbstractExecutor> right_executor_;
+
   std::unordered_map<JoinKey, TupleBucket> ht_{};
   std::unordered_set<JoinKey> not_joined_;
   std::optional<std::vector<Tuple>> tuple_bucket_;
-  Tuple *right_tuple_;
-  bool finished_;
+
+  // Tuple *right_tuple_;
+  Tuple right_tuple_;
+  bool right_finished_{false};
+  bool build_{false};
+  u_int32_t cur_index_{0};
 };
 
 }  // namespace bustub

@@ -28,22 +28,19 @@ HashJoinExecutor::HashJoinExecutor(ExecutorContext *exec_ctx, const HashJoinPlan
   }
 }
 
-HashJoinExecutor::~HashJoinExecutor() {
-  if (right_tuple_ != nullptr) {
-    delete right_tuple_;
-    right_tuple_ = nullptr;
-  }
-}
-
 void HashJoinExecutor::Init() {
+  right_executor_->Init();
+
+  if (build_) {
+    return;
+  }
+
+  build_ = true;
   ht_.clear();
   not_joined_.clear();
-  tuple_bucket_ = std::nullopt;
-  right_tuple_ = new Tuple();
-  finished_ = false;
-
   left_executor_->Init();
-  right_executor_->Init();
+  tuple_bucket_ = std::nullopt;
+  cur_index_ = 0;
 
   Tuple tuple;
   RID rid;
@@ -51,60 +48,54 @@ void HashJoinExecutor::Init() {
     JoinKey left_join_key = GenerateJoinKey(plan_->GetLeftPlan(), plan_->LeftJoinKeyExpressions(), tuple);
     InsertJoinKey(left_join_key, tuple);
   }
-
-  // 这里会不会多次被初始化, 如果会的话就加上一个 build_ 来防止
 }
 
 auto HashJoinExecutor::Next(Tuple *tuple, RID *rid) -> bool {
   auto &left_table_schema = plan_->GetLeftPlan()->OutputSchema();
   auto &right_table_schema = plan_->GetRightPlan()->OutputSchema();
-  auto &right_join_key_expr = plan_->RightJoinKeyExpressions();
-  auto right_plan = plan_->GetRightPlan();
 
   while (true) {
-    if (!tuple_bucket_.has_value()) {
-      bool status = right_executor_->Next(right_tuple_, rid);
-      if (!status) {
-        right_tuple_ = nullptr;
-        finished_ = true;
-      } else {
-        JoinKey join_key = GenerateJoinKey(right_plan, right_join_key_expr, *right_tuple_);
-        tuple_bucket_ = GetTupleBucket(join_key);
-        if (!tuple_bucket_.has_value()) {
-          continue;  // right_tuple_ doesn't find the matched left tuples, iterate to the next right tuple
-        }
-        not_joined_.erase(join_key);  // matches, those left tuples won't be used in left join
-      }
-    }
+    if (tuple_bucket_.has_value() && cur_index_ < tuple_bucket_.value().size()) {
+      Tuple left_tuple = tuple_bucket_.value().at(cur_index_);
+      ++cur_index_;
 
-    if (!finished_ && !tuple_bucket_.value().empty()) {
-      Tuple left_tuple = tuple_bucket_.value().back();
-      tuple_bucket_.value().pop_back();
-      if (right_tuple_ == nullptr) {  // cope with the left join
-        OutputTuple(left_table_schema, right_table_schema, &left_tuple, tuple, false);
+      if (right_finished_) {
+        OutputTuple(left_table_schema, right_table_schema, &left_tuple, tuple, false);  // left join
       } else {
         OutputTuple(left_table_schema, right_table_schema, &left_tuple, tuple, true);
-      }
-
-      if (tuple_bucket_.value().empty()) {
-        tuple_bucket_ = std::nullopt;
       }
       return true;
     }
 
-    if (finished_) {
-      // deal with the left tuples without a match in left join
-      finished_ = false;
-      if (plan_->GetJoinType() == JoinType::LEFT && !not_joined_.empty()) {
-        auto iter = not_joined_.begin();
-        tuple_bucket_ = GetTupleBucket(*iter);
-        not_joined_.erase(iter);
-        continue;  // enter next loop to deal with the rest of the left tuple
+    // 到这里一个 right tuple 对应的 left tuple 全部匹配完毕
+    right_tuple_ = {};
+    tuple_bucket_ = std::nullopt;
+    cur_index_ = 0;
+
+    JoinKey key;
+    const auto status = right_executor_->Next(&right_tuple_, rid);
+    if (!status) {
+      if (plan_->GetJoinType() == JoinType::INNER) {
+        return false;
       }
-      delete right_tuple_;
-      right_tuple_ = nullptr;
-      return false;
+
+      // 处理 left join
+      right_finished_ = true;
+      const auto not_joined_iter = not_joined_.begin();
+      if (not_joined_iter != not_joined_.end()) {
+        key = (*not_joined_iter);
+      } else {
+        return false;  // not_joined 中的 left key 已经全部处理完毕了, 直接返回
+      }
     }
+
+    // 拿到下一个的 right tuple
+    if (!right_finished_) {
+      key = GenerateJoinKey(plan_->GetRightPlan(), plan_->RightJoinKeyExpressions(), right_tuple_);
+    }
+
+    tuple_bucket_ = GetTupleBucket(key);
+    not_joined_.erase(key);
   }
 }
 
@@ -125,10 +116,11 @@ void HashJoinExecutor::OutputTuple(const Schema &left_table_schema, const Schema
     }
   } else {
     for (uint32_t i = 0; i < right_table_schema.GetColumnCount(); ++i) {
-      new_tuple_values.emplace_back(right_tuple_->GetValue(&right_table_schema, i));
+      new_tuple_values.emplace_back(right_tuple_.GetValue(&right_table_schema, i));
     }
   }
 
   *tuple = {new_tuple_values, &GetOutputSchema()};  // avoid copy
+  // std::cout << "output tuple: " << tuple->ToString(&GetOutputSchema()) << std::endl;
 }
 }  // namespace bustub

@@ -25,18 +25,23 @@ SeqScanExecutor::~SeqScanExecutor() {
 }
 
 void SeqScanExecutor::Init() {
+  std::cout << "Init" << std::endl;
   auto catalog = exec_ctx_->GetCatalog();
   auto table_info = catalog->GetTable(plan_->table_oid_);
-  iter_ = new TableIterator(table_info->table_->MakeIterator());  // 这里返回的是初始化列表, 所以需要使用指针
+  // hash join 的时候, seqscan 作为 right_child 会被多次调用 Init()
+  // 所以每次初始化都需要把之前的 TableIterator 内存释放掉
+  if (iter_ != nullptr) {
+    delete iter_;
+    iter_ = new TableIterator(table_info->table_->MakeIterator());
+  } else {
+    iter_ = new TableIterator(table_info->table_->MakeIterator());
+  }
 }
 
 auto SeqScanExecutor::Next(Tuple *tuple, RID *rid) -> bool {
   // keep iterating through the table until you find a non-deleted tuple
   while (true) {
     if (iter_->IsEnd()) {
-      delete iter_;
-      iter_ = nullptr;
-
       return false;
     }
 
