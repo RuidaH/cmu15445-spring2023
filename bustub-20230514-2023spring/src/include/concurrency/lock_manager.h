@@ -64,14 +64,18 @@ class LockManager {
 
   class LockRequestQueue {
    public:
+    // 用智能指针, 防止自己忘记释放内存
+    using ListType = std::list<std::shared_ptr<LockRequest>>;
     /** List of lock requests for the same resource (table or row) */
-    std::list<LockRequest *> request_queue_;
+    ListType request_queue_;
     /** For notifying blocked transactions on this rid */
     std::condition_variable cv_;
     /** txn_id of an upgrading transaction (if any) */
     txn_id_t upgrading_ = INVALID_TXN_ID;
     /** coordination */
     std::mutex latch_;
+
+    auto CheckCompatibility(LockMode lock_mode, ListType::iterator lock_request_iter) -> bool;
   };
 
   /**
@@ -227,6 +231,8 @@ class LockManager {
    * @return true if the upgrade is successful, false otherwise
    */
   auto LockTable(Transaction *txn, LockMode lock_mode, const table_oid_t &oid) noexcept(false) -> bool;
+
+  auto IsTableLocked(Transaction *txn, const table_oid_t &oid, const std::vector<LockMode> &lock_modes) -> std::optional<LockMode>;
 
   /**
    * Release the lock held on a table by the transaction.
