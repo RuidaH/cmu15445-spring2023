@@ -234,6 +234,11 @@ class LockManager {
 
   auto IsTableLocked(Transaction *txn, const table_oid_t &oid, const std::vector<LockMode> &lock_modes) -> std::optional<LockMode>;
 
+  inline void AbortAndThrowException(Transaction *txn, AbortReason abort_reason) {
+    txn->SetState(TransactionState::ABORTED);
+    throw TransactionAbortException(txn->GetTransactionId(), AbortReason::LOCK_ON_SHRINKING);
+  }
+
   /**
    * Release the lock held on a table by the transaction.
    *
