@@ -191,6 +191,10 @@ auto LockManager::LockTable(Transaction *txn, LockMode lock_mode, const table_oi
 
   // no one is holding lock on the table, create a new LockRequestQueue
   auto table_lock_queue_iter = table_lock_map_.find(oid);
+  txn_variant_map_latch_.lock();
+  txn_variant_map_[txn_id] = oid;  // 这里用来追踪每一个 txn 申请的 oid/rid
+  txn_variant_map_latch_.unlock();
+
   if (table_lock_queue_iter == table_lock_map_.end()) {  
     table_lock_map_[oid] = std::make_shared<LockRequestQueue>();
     table_lock_map_[oid]->request_queue_.emplace_back(lock_request);
@@ -446,6 +450,9 @@ auto LockManager::LockRow(Transaction *txn, LockMode lock_mode, const table_oid_
 
   auto lock_request = std::make_shared<LockRequest>(txn_id, lock_mode, oid, rid);
   assert(txn->GetState() != TransactionState::ABORTED);
+  txn_variant_map_latch_.lock();
+  txn_variant_map_[txn_id] = rid;  // 这里用来追踪每一个 txn 申请的 oid/rid
+  txn_variant_map_latch_.unlock();
 
   if (row_lock_map_iter == row_lock_map_.end()) {
     lrque = std::make_shared<LockRequestQueue>();
@@ -580,21 +587,167 @@ void LockManager::UnlockAll() {
   // You probably want to unlock all table and txn locks here.
 }
 
-void LockManager::AddEdge(txn_id_t t1, txn_id_t t2) {}
+// add edge: t1 -> t2
+void LockManager::AddEdge(txn_id_t t1, txn_id_t t2) {
+  assert(t1 != t2);
+  auto &vec = waits_for_[t2];
+  auto iter = std::find(vec.begin(), vec.end(), t1);
+  if (iter != vec.end()) {
+    vec.push_back(t1);
+  }
+}
 
-void LockManager::RemoveEdge(txn_id_t t1, txn_id_t t2) {}
+// remove edge t1 -> t2
+void LockManager::RemoveEdge(txn_id_t t1, txn_id_t t2) {
+  // assert(t1 != t2);  // 遍历 lock request queue 的时候会遍历到自己?
+  auto &vec = waits_for_[t2];
+  auto iter = std::find(vec.begin(), vec.end(), t1);
+  if (iter != vec.end()) {
+    vec.erase(iter);
+  }
+}
 
-auto LockManager::HasCycle(txn_id_t *txn_id) -> bool { return false; }
+auto LockManager::HasCycle(txn_id_t *txn_id) -> bool {
+  // 获取所有正在持有资源的事务
+  if (waits_.size() != waits_for_.size()) {
+    waits_.clear();
+    waits_.reserve(waits_for_.size());
+    for (auto &[t, vec] : waits_for_) {
+      std::sort(vec.begin(), vec.end()); // 提前升序排序, 后续 DFS 始终选择 tid 小的邻居节点
+      waits_.push_back(t);
+    }
+    std::sort(waits_.begin(), waits_.end());  // 为了保证搜索的确定性, 始终从 tid 小的节点开始搜索
+  }
+
+  // 如果没有持有资源的事务, 那么就直接返回 false (没有死锁)
+  if (waits_.empty()) {
+    return false;
+  }
+
+  std::unordered_set<txn_id_t> visited;
+
+  std::function<bool(txn_id_t)> has_cycle = [&](txn_id_t tid) -> bool {
+    // 给定的事务 id 并没有持有资源, 所以不存在死锁, 返回 false
+    if (waits_for_.find(tid) == waits_for_.end()) {
+      return false;
+    }
+
+    // DFS 检测是否存在循环
+    for (const auto &waits_for_txn_id : waits_for_[tid]) {
+      if (visited.count(waits_for_txn_id) == 1) {
+        *txn_id = waits_for_txn_id;
+        for (const auto &visited_txn_id : visited) {
+          *txn_id = std::max(*txn_id, visited_txn_id);
+        }
+        return true;
+      }
+      
+      visited.insert(waits_for_txn_id);
+      if (has_cycle(waits_for_txn_id)) {
+        return true;
+      }
+      visited.erase(waits_for_txn_id);
+    }
+
+    return false;
+  };
+
+  return std::any_of(waits_.begin(), waits_.end(), [&](const auto &txn_id) { return has_cycle(txn_id); });
+}
 
 auto LockManager::GetEdgeList() -> std::vector<std::pair<txn_id_t, txn_id_t>> {
   std::vector<std::pair<txn_id_t, txn_id_t>> edges(0);
+  for (const auto &[t2, vec] : waits_for_) {
+    for (const auto &t1 : vec) {
+      edges.emplace_back(t1, t2);
+    }
+  }
   return edges;
 }
 
 void LockManager::RunCycleDetection() {
+  static size_t round = 0;
+  (void)(round); // 一种消除警告的技巧, 避免编译器发出未使用该变量的警告
   while (enable_cycle_detection_) {
     std::this_thread::sleep_for(cycle_detection_interval);
-    {  // TODO(students): detect deadlock
+    {  
+      std::lock_guard lock(waits_for_latch_);
+      table_lock_map_latch_.lock();
+      row_lock_map_latch_.lock();
+      fmt::print("round {}", round);
+
+      // 每次唤醒线程的时候都需要重新将两个 map 中的事务进行 edge 的增加
+      auto add_edges = [&](const auto &map) {
+        for (const auto &[oid, que] : map) {
+          std::vector<txn_id_t> granted;
+          std::vector<txn_id_t> waiting;
+
+          {
+            std::lock_guard lock(que->latch_);
+            for (const auto &lock_request : que->request_queue_) {
+              if (lock_request->granted_) {
+                granted.push_back(lock_request->txn_id_);
+              } else {
+                waiting.push_back(lock_request->txn_id_);
+              }
+            }
+          }
+
+          for (auto t2 : granted) {
+            for (auto t1 : waiting) {
+              AddEdge(t1, t2);
+            }
+          }
+        }
+      };
+
+      add_edges(table_lock_map_);
+      add_edges(row_lock_map_);
+
+      auto remove_edges = [&](const auto &que, const auto &t1) {
+        std::vector<txn_id_t> granted;
+        for (const auto &lock_request : que->request_queue_) {
+          if (!lock_request->granted_) {
+            break;
+          }
+          granted.push_back(lock_request->txn_id_);
+        }
+        for (auto t2 : granted) {
+          RemoveEdge(t1, t2);
+        }
+        if (waits_for_.find(t1) != waits_for_.end()) {
+          waits_for_.erase(t1);
+        }
+      };
+
+      txn_id_t txn_id = INVALID_TXN_ID;
+
+      // 可能存在多个循环
+      while (HasCycle(&txn_id)) {
+        const auto &txn = TransactionManager::GetTransaction(txn_id);
+        txn->SetState(TransactionState::ABORTED);
+
+        txn_variant_map_latch_.lock();
+        if (const auto *p = std::get_if<table_oid_t>(&txn_variant_map_[txn_id])) {
+          txn_variant_map_latch_.unlock();
+          const auto tid = *p;
+          auto &lock_request_que = table_lock_map_[tid];
+          remove_edges(lock_request_que, txn_id);
+          lock_request_que->cv_.notify_all();
+        } else {
+          const auto rid = std::get_if<RID>(txn_variant_map_[txn_id]);
+          txn_variant_map_latch_.unlock();
+          auto &lock_request_que = row_lock_map_[tid];
+          remove_edges(lock_request_que, txn_id);
+          lock_request_que->cv_.notify_all();
+        }
+      }
+
+      fmt::print("finish round {}", round++);
+      table_lock_map_latch_.unlock();
+      row_lock_map_latch_.unlock();
+      waits_.clear();
+      waits_for_.clear();
     }
   }
 }

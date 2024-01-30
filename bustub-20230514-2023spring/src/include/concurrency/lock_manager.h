@@ -21,6 +21,7 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
+#include <variant>
 
 #include "common/config.h"
 #include "common/macros.h"
@@ -347,8 +348,14 @@ class LockManager {
   std::atomic<bool> enable_cycle_detection_;
   std::thread *cycle_detection_thread_;
   /** Waits-for graph representation. */
+  // t1 <- {t2, t3, t4...}
   std::unordered_map<txn_id_t, std::vector<txn_id_t>> waits_for_;
   std::mutex waits_for_latch_;
+
+  // used in cycle detection
+  std::vector<txn_id_t> waits_;
+  std::unordered_map<txn_id_t, std::variant<table_oid_t, RID>> txn_variant_map_;
+  std::mutex txn_variant_map_latch_;
 };
 
 }  // namespace bustub
